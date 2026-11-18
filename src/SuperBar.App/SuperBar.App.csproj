@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>SuperBar</AssemblyName>
+    <RootNamespace>SuperBar.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SuperBar.Core\SuperBar.Core.csproj" />
+    <ProjectReference Include="..\SuperBar.Infrastructure\SuperBar.Infrastructure.csproj" />
+    <ProjectReference Include="..\SuperBar.Windows\SuperBar.Windows.csproj" />
+    <ProjectReference Include="..\SuperBar.Widgets\SuperBar.Widgets.csproj" />
+    <ProjectReference Include="..\SuperBar.Runtime\SuperBar.Runtime.csproj" />
+    <ProjectReference Include="..\SuperBar.ControlCenter\SuperBar.ControlCenter.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Velopack" />
+  </ItemGroup>
+</Project>

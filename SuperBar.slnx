@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SuperBar.App/SuperBar.App.csproj" />
+    <Project Path="src/SuperBar.ControlCenter/SuperBar.ControlCenter.csproj" />
+    <Project Path="src/SuperBar.Core/SuperBar.Core.csproj" />
+    <Project Path="src/SuperBar.Infrastructure/SuperBar.Infrastructure.csproj" />
+    <Project Path="src/SuperBar.Runtime/SuperBar.Runtime.csproj" />
+    <Project Path="src/SuperBar.Widgets/SuperBar.Widgets.csproj" />
+    <Project Path="src/SuperBar.Windows/SuperBar.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SuperBar.Tests/SuperBar.Tests.csproj" />
+  </Folder>
+</Solution>

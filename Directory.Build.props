@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <!-- Plain net10.0-windows (no WinRT projection assembly); Windows 10/11 targeting is declared in app.manifest. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <Version>0.1.0</Version>
+    <Company>SuperBar</Company>
+    <Product>SuperBar</Product>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,298 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:SuperBar.ControlCenter.ViewModels"
+        xmlns:settings="using:SuperBar.Core.Settings"
+        xmlns:widgets="using:SuperBar.Widgets"
+        x:Class="SuperBar.ControlCenter.Views.ControlCenterWindow"
+        x:DataType="vm:ControlCenterViewModel"
+        Title="SuperBar Control Center"
+        Width="920" Height="620" MinWidth="720" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        RequestedThemeVariant="Dark"
+        Background="#15171C">
+
+  <Window.Styles>
+    <Style Selector="TextBlock.page-title">
+      <Setter Property="FontSize" Value="26" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.page-subtitle">
+      <Setter Property="Foreground" Value="#9AA3B2" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,4,0,20" />
+    </Style>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="#1D2027" />
+      <Setter Property="BorderBrush" Value="#262A33" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="18,14" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style Selector="TextBlock.label">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.hint">
+      <Setter Property="Foreground" Value="#9AA3B2" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="Border.not-implemented">
+      <Setter Property="Background" Value="#2A2414" />
+      <Setter Property="BorderBrush" Value="#5A4A1E" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="12,8" />
+      <Setter Property="Margin" Value="0,8,0,8" />
+    </Style>
+    <Style Selector="ListBox.nav ListBoxItem">
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Margin" Value="0,1" />
+      <Setter Property="Padding" Value="12,9" />
+    </Style>
+  </Window.Styles>
+
+  <Window.DataTemplates>
+    <!-- General -->
+    <DataTemplate DataType="vm:GeneralPageViewModel">
+      <StackPanel>
+        <Border Classes="card">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="label" Text="SuperBar is active" />
+              <TextBlock Classes="hint" Text="When off, SuperBar releases its screen space and the Windows taskbar is restored. The app keeps running so you can turn it back on here." />
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsSuperBarEnabled}" OnContent="" OffContent="" />
+          </Grid>
+        </Border>
+        <Border Classes="card">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="label" Text="Hide the Windows taskbar while SuperBar runs" />
+              <TextBlock Classes="hint" Text="Temporarily switches the native taskbar to auto-hide and hides it. Your original setting is saved and restored on exit, and on the next start if SuperBar ever closes unexpectedly." />
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding HideNativeTaskbar}" OnContent="" OffContent="" />
+          </Grid>
+        </Border>
+        <Border Classes="card">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="label" Text="Start with Windows" />
+              <TextBlock Classes="hint" Text="Not implemented yet - planned together with the Velopack installer." />
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" IsEnabled="False" OnContent="" OffContent="" />
+          </Grid>
+        </Border>
+        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+          <Button Content="Reset all settings" Command="{Binding ResetCommand}" />
+          <Button Content="Exit SuperBar" Command="{Binding ExitCommand}" />
+        </StackPanel>
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- Appearance -->
+    <DataTemplate DataType="vm:AppearancePageViewModel">
+      <StackPanel>
+        <Border Classes="card">
+          <StackPanel Spacing="4">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="label" Text="Bar height" />
+              <TextBlock Grid.Column="1" Classes="hint" Text="{Binding TaskbarHeight, StringFormat='{}{0:0} px'}" />
+            </Grid>
+            <Slider Minimum="{Binding MinHeight}" Maximum="{Binding MaxHeight}" Value="{Binding TaskbarHeight}" TickFrequency="2" IsSnapToTickEnabled="True" />
+          </StackPanel>
+        </Border>
+        <Border Classes="card">
+          <StackPanel Spacing="4">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="label" Text="Background opacity" />
+              <TextBlock Grid.Column="1" Classes="hint" Text="{Binding BackgroundOpacity, StringFormat='{}{0:P0}'}" />
+            </Grid>
+            <Slider Minimum="0.2" Maximum="1" Value="{Binding BackgroundOpacity}" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+              <TextBlock Classes="hint" Text="Blur the desktop behind the bar (acrylic)" VerticalAlignment="Center" />
+              <ToggleSwitch Grid.Column="1" IsChecked="{Binding UseAcrylic}" OnContent="" OffContent="" />
+            </Grid>
+          </StackPanel>
+        </Border>
+        <Border Classes="card">
+          <StackPanel Spacing="4">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="label" Text="Item corner radius" />
+              <TextBlock Grid.Column="1" Classes="hint" Text="{Binding CornerRadius, StringFormat='{}{0:0} px'}" />
+            </Grid>
+            <Slider Minimum="0" Maximum="24" Value="{Binding CornerRadius}" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+              <TextBlock Classes="label" Text="Item spacing" />
+              <TextBlock Grid.Column="1" Classes="hint" Text="{Binding ItemSpacing, StringFormat='{}{0:0} px'}" />
+            </Grid>
+            <Slider Minimum="0" Maximum="24" Value="{Binding ItemSpacing}" />
+          </StackPanel>
+        </Border>
+        <Border Classes="card">
+          <StackPanel Spacing="10">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="label" Text="Dark theme" />
+              <ToggleSwitch Grid.Column="1" IsChecked="{Binding DarkTheme}" OnContent="" OffContent="" />
+            </Grid>
+            <TextBlock Classes="label" Text="Accent color" />
+            <ItemsControl ItemsSource="{Binding AccentSwatches}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="8" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <Button Width="28" Height="28" CornerRadius="14" Padding="0" Background="{Binding}"
+                          Command="{Binding $parent[ItemsControl].((vm:AppearancePageViewModel)DataContext).SetAccentCommand}"
+                          CommandParameter="{Binding}" ToolTip.Tip="{Binding}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- Layout -->
+    <DataTemplate DataType="vm:LayoutPageViewModel">
+      <StackPanel>
+        <TextBlock Classes="hint" Margin="0,0,0,10" Text="Sections are drawn left to right within their zone. The right zone stays anchored to the screen edge; the center zone is centered on the bar." />
+        <ItemsControl ItemsSource="{Binding Sections}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:LayoutItemViewModel">
+              <Border Classes="card" Padding="14,8">
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
+                  <TextBlock Classes="label" Text="{Binding Name}" />
+                  <ComboBox Grid.Column="1" Width="120" SelectedItem="{Binding Zone}"
+                            ItemsSource="{Binding $parent[ItemsControl].((vm:LayoutPageViewModel)DataContext).Zones}" />
+                  <Button Grid.Column="2" Content="Up" Command="{Binding MoveUpCommand}" />
+                  <Button Grid.Column="3" Content="Down" Command="{Binding MoveDownCommand}" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Border Classes="not-implemented">
+          <TextBlock Classes="hint" Text="Planned: drag-and-drop reordering on the bar itself, adding/removing sections, and per-monitor layouts." />
+        </Border>
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- Widgets -->
+    <DataTemplate DataType="vm:WidgetsPageViewModel">
+      <StackPanel>
+        <ItemsControl ItemsSource="{Binding Instances}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:WidgetItemViewModel">
+              <Border Classes="card">
+                <StackPanel Spacing="6">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel>
+                      <TextBlock Classes="label" Text="{Binding DisplayName}" />
+                      <TextBlock Classes="hint" Text="{Binding Description}" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1" IsChecked="{Binding Enabled}" OnContent="" OffContent="" />
+                  </Grid>
+                  <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                    <TextBlock Classes="hint" Text="Slot width" />
+                    <TextBlock Grid.Column="1" Classes="hint" Text="{Binding Width, StringFormat='{}{0:0} px'}" />
+                  </Grid>
+                  <Slider Minimum="{Binding MinWidth}" Maximum="{Binding MaxWidth}" Value="{Binding Width}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Classes="label" Text="Available widget types" Margin="0,16,0,8" />
+        <ItemsControl ItemsSource="{Binding AvailableTypes}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="widgets:WidgetDescriptor">
+              <TextBlock Classes="hint" Text="{Binding DisplayName, StringFormat='• {0}'}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Border Classes="not-implemented">
+          <TextBlock Classes="hint" Text="Planned: adding multiple widget instances, per-widget settings, and more widget types (calendar, weather, media, session statistics)." />
+        </Border>
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- Applications -->
+    <DataTemplate DataType="vm:ApplicationsPageViewModel">
+      <StackPanel>
+        <ItemsControl ItemsSource="{Binding Pinned}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="settings:PinnedApp">
+              <Border Classes="card" Padding="14,10">
+                <StackPanel>
+                  <TextBlock Classes="label" Text="{Binding DisplayName}" />
+                  <TextBlock Classes="hint" Text="{Binding Path}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Border Classes="not-implemented">
+          <TextBlock Classes="hint" Text="Planned: pin/unpin from the bar and from here, drag to reorder, import pins from the Windows taskbar, and resolving .lnk shortcuts to match running apps." />
+        </Border>
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- About -->
+    <DataTemplate DataType="vm:AboutPageViewModel">
+      <StackPanel>
+        <Border Classes="card">
+          <StackPanel Spacing="6">
+            <TextBlock Classes="label" Text="{Binding Version, StringFormat='SuperBar {0} - foundation milestone'}" />
+            <TextBlock Classes="hint" Text="{Binding DataDirectory, StringFormat='Data: {0}'}" />
+            <TextBlock Classes="hint" Text="{Binding LogDirectory, StringFormat='Logs: {0}'}" />
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+              <Button Content="Open data folder" Command="{Binding OpenDataFolderCommand}" />
+              <Button Content="Open log folder" Command="{Binding OpenLogFolderCommand}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+        <Border Classes="card">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="label" Text="If the Windows taskbar ever stays hidden" />
+            <TextBlock Classes="hint" Text="Start SuperBar again (it restores the taskbar automatically), or run:  SuperBar.exe --restore-taskbar" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </DataTemplate>
+  </Window.DataTemplates>
+
+  <Grid ColumnDefinitions="232,*">
+    <!-- Navigation -->
+    <Border Background="#111317" BorderBrush="#22252C" BorderThickness="0,0,1,0" Padding="12,18">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="8,0,0,18" Spacing="2">
+          <TextBlock Text="SuperBar" FontSize="18" FontWeight="SemiBold" />
+          <TextBlock Text="Control Center" Foreground="#9AA3B2" FontSize="12" />
+        </StackPanel>
+        <ListBox Classes="nav" ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage}" Background="Transparent">
+          <ListBox.ItemTemplate>
+            <DataTemplate DataType="vm:PageViewModel">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <Path Data="{Binding Glyph}" Width="16" Height="16" Stretch="Uniform" Stroke="#C9CED8" StrokeThickness="1.4" />
+                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+    <!-- Page -->
+    <ScrollViewer Grid.Column="1">
+      <StackPanel Margin="36,28,36,28" MaxWidth="760" HorizontalAlignment="Left">
+        <TextBlock Classes="page-title" Text="{Binding SelectedPage.Title}" />
+        <TextBlock Classes="page-subtitle" Text="{Binding SelectedPage.Subtitle}" />
+        <ContentControl Content="{Binding SelectedPage}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</Window>
