@@ -68,6 +68,10 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     public ICommand OpenTaskManagerCommand { get; }
     public ICommand ExitCommand { get; }
 
+    /// <summary>The on-screen element of a widget instance's slot, or null when it is not shown.</summary>
+    public Microsoft.UI.Xaml.FrameworkElement? FindWidgetElement(string instanceId) =>
+        _widgetSections.TryGetValue(instanceId, out var section) && section.CurrentElement is { IsLoaded: true } element ? element : null;
+
     public void Apply(SuperBarSettings settings)
     {
         Apps.SetPins(settings.PinnedApps);

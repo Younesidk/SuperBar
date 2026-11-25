@@ -9,6 +9,12 @@ public static class WidgetsServiceCollectionExtensions
     public static IServiceCollection AddSuperBarWidgets(this IServiceCollection services)
     {
         services.AddSingleton<IWidgetRegistry, WidgetRegistry>();
+
+        // The bar's single flyout. Its surface is the taskbar's (registered by SuperBar.Runtime), if any.
+        services.AddSingleton(sp => new WidgetFlyoutCoordinator(
+            sp.GetService<IWidgetFlyoutSurface>(),
+            sp.GetService<TimeProvider>(),
+            sp.GetService<Microsoft.Extensions.Logging.ILogger<WidgetFlyoutCoordinator>>()));
         services.AddWidgetsFrom(typeof(WidgetHost).Assembly);
         return services;
     }

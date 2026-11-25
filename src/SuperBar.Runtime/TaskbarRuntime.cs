@@ -10,6 +10,7 @@ using SuperBar.Runtime.ViewModels;
 using SuperBar.Runtime.Views;
 using SuperBar.Runtime.Widgets;
 using SuperBar.Widgets;
+using Microsoft.UI.Xaml;
 using Windows.Graphics;
 
 namespace SuperBar.Runtime;
@@ -132,6 +133,12 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         _appBar = _appBars.Register(hwnd, CreateOptions(settings, monitor));
         _appBar.FullscreenAppChanged += OnFullscreenAppChanged;
 
+        var viewModel = _viewModel;
+        _services.GetRequiredService<WidgetFlyoutSurface>().Attach(
+            (FrameworkElement)_window.Content,
+            viewModel.FindWidgetElement,
+            ScreenEdge.Bottom);
+
         _viewModel.Activate();
         IsEnabled = true;
         StateChanged?.Invoke(this, EventArgs.Empty);
@@ -147,6 +154,8 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
 
         _logger.LogInformation("Disabling SuperBar");
         _viewModel?.Deactivate();
+        _services.GetRequiredService<WidgetFlyoutCoordinator>().CloseAll();
+        _services.GetRequiredService<WidgetFlyoutSurface>().Detach();
 
         if (_appBar is not null)
         {

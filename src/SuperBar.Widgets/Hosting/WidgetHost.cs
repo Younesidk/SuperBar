@@ -71,6 +71,7 @@ public sealed class WidgetHost : IDisposable
     private int _automaticRestarts;
     private long _lastFaultAt;
     private readonly IWidgetStateStore _state;
+    private readonly WidgetFlyoutCoordinator _flyouts;
     private bool _wantActive;
 
     // The options the live widget currently has (loaded, applied or saved by itself). Incoming settings are compared
@@ -84,6 +85,9 @@ public sealed class WidgetHost : IDisposable
         _services = services;
         _dispatcher = services.GetRequiredService<IUiDispatcher>();
         _logger = loggerFactory.CreateLogger($"SuperBar.Widget.{descriptor.TypeId}");
+
+        // One coordinator for the whole bar keeps a single flyout open; tests without one get a private coordinator.
+        _flyouts = services.GetService<WidgetFlyoutCoordinator>() ?? new WidgetFlyoutCoordinator(null);
 
         // Survives restarts of a faulted widget: state belongs to the instance, not to one widget object.
         _state = services.GetService<ISettingsStore>() is { } store
@@ -158,6 +162,31 @@ public sealed class WidgetHost : IDisposable
         }
     }
 
+    /// <summary>
+    /// The widget's right-click menu items with their current state, or none when the widget is not running.
+    /// Reading the state runs widget code, so it is guarded: a widget that throws here faults and adds nothing.
+    /// </summary>
+    public IReadOnlyList<WidgetMenuEntry> GetMenuItems()
+    {
+        if (State is not (WidgetState.Ready or WidgetState.Active) || _widget is not IWidgetMenu menu)
+        {
+            return [];
+        }
+
+        var entries = new List<WidgetMenuEntry>();
+        Guard(
+            () =>
+            {
+                foreach (var item in menu.MenuItems)
+                {
+                    var command = item.Command;
+                    entries.Add(new WidgetMenuEntry(item.Text, item.Glyph, item.IsChecked?.Invoke(), () => command.Execute()));
+                }
+            },
+            "build its menu");
+        return State == WidgetState.Faulted ? [] : entries;
+    }
+
     /// <summary>Recreates a faulted widget now. Also what a click on the error placeholder does.</summary>
     public void Restart()
     {
@@ -174,6 +203,7 @@ public sealed class WidgetHost : IDisposable
 
         var wasActive = State == WidgetState.Active;
         var widget = _widget;
+        _flyouts.Close(InstanceId);
         StopRestartTimer();
         DisposeScope();
         CancelInitialization();
@@ -209,6 +239,7 @@ public sealed class WidgetHost : IDisposable
             InstanceId,
             _logger,
             _state,
+            new WidgetFlyout(_flyouts, InstanceId, () => generation == _generation && State == WidgetState.Active),
             (action, operation) =>
             {
                 // Callbacks of a widget that has since been replaced or disposed are dropped.
@@ -350,6 +381,7 @@ public sealed class WidgetHost : IDisposable
         var widget = _widget!;
 
         // The scope ends first: when the widget hears about it, nothing it started is running any more.
+        _flyouts.Close(InstanceId);
         DisposeScope();
         SetState(WidgetState.Ready);
         if (State == WidgetState.Ready)
@@ -444,6 +476,7 @@ public sealed class WidgetHost : IDisposable
         var widget = _widget;
         _widget = null;
         _viewModel = null;
+        _flyouts.Close(InstanceId);
         DisposeScope();
         CancelInitialization();
         if (widget is not null)

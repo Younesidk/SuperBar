@@ -17,6 +17,8 @@ public static class RuntimeServiceCollectionExtensions
         services.AddSingleton<IconCache>();
         services.AddSingleton<TaskbarTheme>();
         services.AddSingleton<WidgetViewResolver>();
+        services.AddSingleton<WidgetFlyoutSurface>();
+        services.AddSingleton<SuperBar.Widgets.IWidgetFlyoutSurface>(sp => sp.GetRequiredService<WidgetFlyoutSurface>());
         services.AddSingleton<TaskbarRuntime>();
         services.AddSingleton<ITaskbarRuntimeController>(sp => sp.GetRequiredService<TaskbarRuntime>());
 

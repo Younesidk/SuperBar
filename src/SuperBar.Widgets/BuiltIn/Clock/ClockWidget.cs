@@ -9,7 +9,7 @@ namespace SuperBar.Widgets.BuiltIn;
 /// <summary>
 /// Time and date in the user's regional format. Wakes once per minute (or once per second when seconds are
 /// shown), aligned to the boundary, and only while the widget is active. A click opens the Windows notification
-/// center / calendar flyout.
+/// center / calendar flyout; its right-click menu adds a "Show seconds" switch.
 /// </summary>
 [Widget(DefaultSettings.ClockWidgetType, "Clock",
     Description = "Time and date. Click to open the notification center.",
@@ -34,6 +34,7 @@ public sealed class ClockWidget : WidgetBase<ClockSettings, ClockModel>
     {
         _time = time ?? TimeProvider.System;
         On(Model.Open, shell.ToggleNotificationCenter);
+        AddMenuItem("Show seconds", () => SaveSettings(s => s.ShowSeconds = !s.ShowSeconds), "\uE916", isChecked: () => Settings.ShowSeconds);
     }
 
     /// <summary>The wait until just after the next full minute.</summary>

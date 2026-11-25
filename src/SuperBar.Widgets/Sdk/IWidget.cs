@@ -92,17 +92,27 @@ public sealed class WidgetContext
     private readonly Action<Action, string>? _guard;
     private readonly Action<JsonObject>? _saveSettings;
 
-    /// <summary>Creates a context without a host (tests): callbacks run unguarded and settings are not persisted.</summary>
-    public WidgetContext(string instanceId, ILogger logger, IWidgetStateStore? state = null)
-        : this(instanceId, logger, state ?? new InMemoryWidgetStateStore(), null, null)
+    /// <summary>
+    /// Creates a context without a host (tests): callbacks run unguarded, settings are not persisted, and flyouts
+    /// open on <paramref name="flyouts"/> (a private coordinator without a surface when omitted).
+    /// </summary>
+    public WidgetContext(string instanceId, ILogger logger, IWidgetStateStore? state = null, WidgetFlyoutCoordinator? flyouts = null)
+        : this(instanceId, logger, state ?? new InMemoryWidgetStateStore(), new WidgetFlyout(flyouts ?? new WidgetFlyoutCoordinator(null), instanceId, () => true), null, null)
     {
     }
 
-    internal WidgetContext(string instanceId, ILogger logger, IWidgetStateStore state, Action<Action, string>? guard, Action<JsonObject>? saveSettings)
+    internal WidgetContext(
+        string instanceId,
+        ILogger logger,
+        IWidgetStateStore state,
+        IWidgetFlyoutHost flyout,
+        Action<Action, string>? guard,
+        Action<JsonObject>? saveSettings)
     {
         InstanceId = instanceId;
         Logger = logger;
         State = state;
+        Flyout = flyout;
         _guard = guard;
         _saveSettings = saveSettings;
     }
@@ -113,6 +123,9 @@ public sealed class WidgetContext
 
     /// <summary>This instance's runtime state (not settings). Saving it does not touch the bar's layout.</summary>
     public IWidgetStateStore State { get; }
+
+    /// <summary>This widget's flyout (see <see cref="IWidgetFlyoutHost"/>).</summary>
+    public IWidgetFlyoutHost Flyout { get; }
 
     /// <summary>Persists changed settings values of this instance (merged into its stored options).</summary>
     internal void SaveSettings(JsonObject values) => _saveSettings?.Invoke(values);

@@ -14,16 +14,19 @@ public sealed class ClockWidgetTests : IDisposable
     private readonly FakeUiDispatcher _ui = new();
     private readonly FakeShell _shell = new();
     private readonly FixedTime _time = new(new DateTimeOffset(2026, 3, 14, 9, 26, 53, 500, TimeSpan.Zero));
+    private readonly FakeFlyoutSurface _surface = new();
+    private readonly WidgetFlyoutCoordinator _flyouts;
     private readonly WidgetHost _host;
 
     public ClockWidgetTests()
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture; // HH:mm and MM/dd/yyyy
+        _flyouts = new WidgetFlyoutCoordinator(_surface, new ManualTime());
         _host = TestHost.Create(
             _ui,
             WidgetDescriptor.FromType(typeof(ClockWidget)),
             new WidgetInstanceSettings { InstanceId = DefaultSettings.ClockWidgetInstanceId, TypeId = DefaultSettings.ClockWidgetType },
-            configure: services => services.AddSingleton<IShellCommands>(_shell).AddSingleton<TimeProvider>(_time));
+            configure: services => services.AddSingleton<IShellCommands>(_shell).AddSingleton<TimeProvider>(_time).AddSingleton(_flyouts));
     }
 
     public void Dispose()
@@ -84,13 +87,29 @@ public sealed class ClockWidgetTests : IDisposable
     }
 
     [Fact]
-    public void A_click_opens_the_notification_center()
+    public void A_click_opens_the_windows_notification_center_and_calendar()
     {
         _host.Activate();
 
         Model.Open.Execute();
 
         Assert.Equal(1, _shell.NotificationCenterToggles);
+        Assert.Null(_flyouts.Owner); // the clock opens Windows' own flyout, not a SuperBar one
+        Assert.Empty(_surface.Calls);
+    }
+
+    [Fact]
+    public void Right_click_offers_a_show_seconds_switch()
+    {
+        _host.Activate();
+
+        var item = Assert.Single(_host.GetMenuItems());
+        Assert.Equal("Show seconds", item.Text);
+        Assert.Equal(false, item.IsChecked);
+
+        item.Invoke(); // saves the setting and switches the clock live
+        Assert.Equal("09:26:53", Model.Time);
+        Assert.Equal(true, Assert.Single(_host.GetMenuItems()).IsChecked);
     }
 
     private static WidgetInstanceSettings Options(params (string Key, JsonNode? Value)[] options)

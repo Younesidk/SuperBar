@@ -7,9 +7,10 @@ namespace SuperBar.Widgets;
 /// Base class of a widget without settings. Override <see cref="OnActivated"/> and start timers, polling and
 /// subscriptions through the scope; nothing has to be stopped by hand.
 /// </summary>
-public abstract class WidgetBase : IWidget
+public abstract class WidgetBase : IWidget, IWidgetMenu
 {
     private readonly HashSet<WidgetCommand> _commands = new();
+    private readonly List<WidgetMenuItem> _menuItems = new();
     private bool _disposed;
 
     protected WidgetBase(WidgetContext context)
@@ -59,6 +60,23 @@ public abstract class WidgetBase : IWidget
 
         _commands.Add(command);
         command.Bind(parameter => Context.Invoke(() => handler(parameter), "command"));
+    }
+
+    /// <summary>The items this widget adds to its right-click menu, above SuperBar's own.</summary>
+    public IReadOnlyList<WidgetMenuItem> MenuItems => _menuItems;
+
+    /// <summary>
+    /// Adds a right-click menu item, shown above SuperBar's own items when the widget is right-clicked. Usually called
+    /// from the constructor. <paramref name="handler"/> runs behind the fault guard, like a command handler.
+    /// </summary>
+    /// <param name="isChecked">Makes it an on/off item; read each time the menu opens.</param>
+    protected WidgetMenuItem AddMenuItem(string text, Action handler, string? glyph = null, Func<bool>? isChecked = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        var item = new WidgetMenuItem(text, glyph, isChecked);
+        On(item.Command, handler);
+        _menuItems.Add(item);
+        return item;
     }
 
     private protected virtual void LoadSettingsCore(JsonObject settings)

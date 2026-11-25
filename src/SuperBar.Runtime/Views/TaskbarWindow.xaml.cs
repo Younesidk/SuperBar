@@ -88,11 +88,55 @@ public sealed partial class TaskbarWindow : Window
     private void OnBarContextRequested(UIElement sender, ContextRequestedEventArgs args)
     {
         var menu = new MenuFlyout { ShouldConstrainToRootBounds = false };
+
+        // A right-click on a widget puts that widget's own items first (built and run behind its fault guard).
+        if (WidgetUnder(args.OriginalSource as DependencyObject) is { } widget)
+        {
+            var entries = widget.Host.GetMenuItems();
+            foreach (var entry in entries)
+            {
+                menu.Items.Add(CreateItem(entry));
+            }
+
+            if (entries.Count > 0)
+            {
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
+        }
+
         menu.Items.Add(new MenuFlyoutItem { Text = "SuperBar Control Center", Command = ViewModel.OpenControlCenterCommand });
         menu.Items.Add(new MenuFlyoutItem { Text = "Task Manager", Command = ViewModel.OpenTaskManagerCommand });
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(new MenuFlyoutItem { Text = "Exit SuperBar (restore Windows taskbar)", Command = ViewModel.ExitCommand });
         ShowContextMenu(menu, Root, args);
+    }
+
+    private static WidgetSectionViewModel? WidgetUnder(DependencyObject? source)
+    {
+        for (var node = source; node is not null; node = VisualTreeHelper.GetParent(node))
+        {
+            if (node is FrameworkElement { DataContext: WidgetSectionViewModel section })
+            {
+                return section;
+            }
+        }
+
+        return null;
+    }
+
+    private static MenuFlyoutItemBase CreateItem(SuperBar.Widgets.WidgetMenuEntry entry)
+    {
+        var icon = entry.Glyph is { } glyph ? new FontIcon { Glyph = glyph } : null;
+        if (entry.IsChecked is { } isChecked)
+        {
+            var toggle = new ToggleMenuFlyoutItem { Text = entry.Text, IsChecked = isChecked, Icon = icon };
+            toggle.Click += (_, _) => entry.Invoke();
+            return toggle;
+        }
+
+        var item = new MenuFlyoutItem { Text = entry.Text, Icon = icon };
+        item.Click += (_, _) => entry.Invoke();
+        return item;
     }
 
     private void OnAppContextRequested(UIElement sender, ContextRequestedEventArgs args)

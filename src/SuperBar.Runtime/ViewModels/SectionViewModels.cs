@@ -78,6 +78,9 @@ public sealed class WidgetSectionViewModel : SectionViewModel, IDisposable
         }
     }
 
+    /// <summary>The element currently shown in the slot (what a flyout is anchored to), or null before the first render.</summary>
+    public FrameworkElement? CurrentElement => _view as FrameworkElement;
+
     /// <summary>The slot width in DIPs, or NaN when the widget sizes itself to its content.</summary>
     public double Width
     {
