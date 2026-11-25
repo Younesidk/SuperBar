@@ -25,12 +25,14 @@ public sealed partial class TaskbarWindow : Window
     private readonly TaskbarTheme _theme;
     private readonly TaskbarAcrylicBackdrop _acrylic;
     private readonly WindowPreviewPopup _preview;
+    private readonly AppDragController _drag;
 
     public TaskbarWindow(TaskbarViewModel viewModel, TaskbarTheme theme, IWindowChrome chrome, WindowPreviewPopup preview, ILogger<TaskbarWindow> logger)
     {
         ViewModel = viewModel;
         _theme = theme;
         _preview = preview;
+        _drag = new AppDragController(() => _preview.Hide(animate: false));
         _acrylic = new TaskbarAcrylicBackdrop(logger);
 
         // The XAML below references SB.* resources; they must exist before it loads.
@@ -103,13 +105,27 @@ public sealed partial class TaskbarWindow : Window
 
         var menu = new MenuFlyout { ShouldConstrainToRootBounds = false, Placement = FlyoutPlacementMode.Top };
         menu.Items.Add(new MenuFlyoutItem { Text = app.DisplayName, IsEnabled = false });
-        menu.Items.Add(new MenuFlyoutItem { Text = "Open new window", Command = app.LaunchNewCommand });
+        menu.Items.Add(new MenuFlyoutItem { Text = "Open new window", Command = app.LaunchNewCommand, Icon = new FontIcon { Glyph = "\uE8A7" } });
+        if (app.IsPinned || app.CanPin)
+        {
+            menu.Items.Add(new MenuFlyoutItem
+            {
+                Text = app.IsPinned ? "Unpin from taskbar" : "Pin to taskbar",
+                Icon = new FontIcon { Glyph = app.IsPinned ? "\uE77A" : "\uE718" },
+                Command = app.TogglePinCommand,
+            });
+        }
         ShowContextMenu(menu, button, args);
     }
 
     private void OnAppPointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: AppButtonViewModel app } button)
+        {
+            return;
+        }
+
+        if (_drag.IsDragging)
         {
             return;
         }
@@ -130,7 +146,24 @@ public sealed partial class TaskbarWindow : Window
         }
     }
 
-    private void OnAppClick(object sender, RoutedEventArgs e) => _preview.Hide();
+    private void OnAppItemLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement item)
+        {
+            _drag.Attach(item);
+        }
+    }
+
+    private void OnAppClick(object sender, RoutedEventArgs e)
+    {
+        if (_drag.ShouldSuppressClick || sender is not FrameworkElement { DataContext: AppButtonViewModel app })
+        {
+            return;
+        }
+
+        _preview.Hide();
+        app.ClickCommand.Execute(null);
+    }
 
     /// <summary>The bar's full-height column under <paramref name="element"/>, in physical screen pixels.</summary>
     private ScreenRect ColumnOf(FrameworkElement element)

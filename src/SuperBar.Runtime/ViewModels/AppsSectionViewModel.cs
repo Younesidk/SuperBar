@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Media;
+using SuperBar.Core.Layout;
 using SuperBar.Core.Mvvm;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
@@ -12,6 +14,10 @@ namespace SuperBar.Runtime.ViewModels;
 /// <summary>
 /// Pinned and running applications. Running windows are grouped by executable path and matched to pins
 /// by path, so a pinned app lights up when it runs. Updates are diffed to avoid re-creating buttons.
+/// <para>
+/// The user can drag buttons into any order. That order is kept for the session (running apps included) and the
+/// pinned apps' order is persisted through <see cref="PinOrderChanged"/>.
+/// </para>
 /// </summary>
 public sealed class AppsSectionViewModel : SectionViewModel
 {
@@ -22,6 +28,18 @@ public sealed class AppsSectionViewModel : SectionViewModel
     private readonly ILogger _logger;
     private IReadOnlyList<PinnedApp> _pins = [];
     private bool _active;
+    private List<string> _manualOrder = [];
+    private bool _reordering;
+    private bool _rebuildPending;
+
+    /// <summary>Raised after a drag changed the order: the keys of the pinned apps, in their new order.</summary>
+    public event Action<IReadOnlyList<string>>? PinOrderChanged;
+
+    /// <summary>"Pin to taskbar": the new pin, and its position among the pinned apps.</summary>
+    public event Action<PinnedApp, int>? PinRequested;
+
+    /// <summary>"Unpin from taskbar": the key (lower-cased path) of the pin to remove.</summary>
+    public event Action<string>? UnpinRequested;
 
     public AppsSectionViewModel(string id, IWindowTracker tracker, IWindowSwitcher switcher, IAppLauncher launcher, IconCache icons, ILogger logger) : base(id)
     {
@@ -65,11 +83,39 @@ public sealed class AppsSectionViewModel : SectionViewModel
 
     private void OnWindowsChanged(object? sender, EventArgs e) => Rebuild();
 
+    /// <summary>A button is being dragged: structural updates wait until it is dropped.</summary>
+    public void BeginReorder() => _reordering = true;
+
+    /// <summary>Ends a drag, moving the button from <paramref name="from"/> to <paramref name="to"/> (equal to cancel).</summary>
+    public void EndReorder(int from, int to)
+    {
+        _reordering = false;
+        if (from != to && from >= 0 && to >= 0 && from < Apps.Count && to < Apps.Count)
+        {
+            Apps.Move(from, to);
+            _manualOrder = Apps.Select(a => a.Key).ToList();
+            _logger.LogInformation("Moved {App} to position {Position}", Apps[to].DisplayName, to);
+            PinOrderChanged?.Invoke(Apps.Where(a => a.IsPinned).Select(a => a.Key).ToList());
+        }
+
+        if (_rebuildPending)
+        {
+            _rebuildPending = false;
+            Rebuild();
+        }
+    }
+
     internal static string GroupKey(TrackedWindow w) =>
         string.IsNullOrEmpty(w.ProcessPath) ? $"hwnd:{w.Handle}" : w.ProcessPath.ToLowerInvariant();
 
     private void Rebuild()
     {
+        if (_reordering)
+        {
+            _rebuildPending = true;
+            return;
+        }
+
         var windowsByKey = new Dictionary<string, List<TrackedWindow>>();
         var runningOrder = new List<string>();
         foreach (var w in _tracker.Windows)
@@ -102,6 +148,8 @@ public sealed class AppsSectionViewModel : SectionViewModel
                 desired.Add((key, null));
             }
         }
+
+        desired = AppOrdering.Arrange(desired, d => d.Key, _manualOrder);
 
         var existing = Apps.ToDictionary(a => a.Key);
         var active = _tracker.ActiveWindow;
@@ -185,6 +233,44 @@ public sealed class AppsSectionViewModel : SectionViewModel
         _switcher.Activate(next);
     }
 
+    internal void OnTogglePin(AppButtonViewModel app)
+    {
+        // Freeze the current order first: pinning or unpinning must not make any button jump.
+        _manualOrder = Apps.Select(a => a.Key).ToList();
+
+        if (app.IsPinned)
+        {
+            _logger.LogInformation("Unpinning {App}", app.DisplayName);
+            UnpinRequested?.Invoke(app.Key);
+            return;
+        }
+
+        if (!app.CanPin || app.LaunchPath is not { } path)
+        {
+            return;
+        }
+
+        var index = Apps.TakeWhile(a => !ReferenceEquals(a, app)).Count(a => a.IsPinned);
+        var pin = new PinnedApp { DisplayName = FriendlyName(path, app.DisplayName), Path = path };
+        _logger.LogInformation("Pinning {App} ({Path}) at position {Index}", pin.DisplayName, path, index);
+        PinRequested?.Invoke(pin, index);
+    }
+
+    /// <summary>The executable's description ("Notepad", "JetBrains Rider") rather than its file name.</summary>
+    internal static string FriendlyName(string path, string fallback)
+    {
+        try
+        {
+            var info = FileVersionInfo.GetVersionInfo(path);
+            var name = string.IsNullOrWhiteSpace(info.FileDescription) ? info.ProductName : info.FileDescription;
+            return string.IsNullOrWhiteSpace(name) ? fallback : name.Trim();
+        }
+        catch (Exception)
+        {
+            return fallback;
+        }
+    }
+
     internal void OnLaunchNew(AppButtonViewModel app)
     {
         if (app.LaunchPath is { } path)
@@ -200,6 +286,7 @@ public sealed class AppButtonViewModel : ObservableObject
     private string _displayName = "";
     private string? _toolTip;
     private readonly RelayCommand _launchNewCommand;
+    private readonly RelayCommand _togglePinCommand;
     private ImageSource? _icon;
     private bool _isPinned;
     private bool _isRunning;
@@ -213,6 +300,7 @@ public sealed class AppButtonViewModel : ObservableObject
         _owner = owner;
         ClickCommand = new RelayCommand(() => _owner.OnClicked(this));
         _launchNewCommand = new RelayCommand(_ => _owner.OnLaunchNew(this), _ => CanLaunch);
+        _togglePinCommand = new RelayCommand(_ => _owner.OnTogglePin(this), _ => IsPinned || CanPin);
     }
 
     public string Key { get; }
@@ -221,6 +309,16 @@ public sealed class AppButtonViewModel : ObservableObject
 
     /// <summary>"Open new window". Disabled through CanExecute when there is nothing to launch.</summary>
     public ICommand LaunchNewCommand => _launchNewCommand;
+
+    /// <summary>"Pin to taskbar" / "Unpin from taskbar".</summary>
+    public ICommand TogglePinCommand => _togglePinCommand;
+
+    /// <summary>
+    /// A running app can be pinned when it has a launchable executable. Store (UWP) apps run inside
+    /// ApplicationFrameHost.exe, which cannot be launched to start them, so they cannot be pinned yet.
+    /// </summary>
+    public bool CanPin =>
+        !IsPinned && LaunchPath is { } path && !path.EndsWith("ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase);
 
     public List<TrackedWindow> Windows { get; private set; } = [];
 
@@ -278,6 +376,7 @@ public sealed class AppButtonViewModel : ObservableObject
         OnPropertyChanged(nameof(Initial));
         OnPropertyChanged(nameof(CanLaunch));
         _launchNewCommand.RaiseCanExecuteChanged();
+        _togglePinCommand.RaiseCanExecuteChanged();
         Icon = icon;
         IsRunning = windows.Count > 0;
         HasMultipleWindows = windows.Count > 1;

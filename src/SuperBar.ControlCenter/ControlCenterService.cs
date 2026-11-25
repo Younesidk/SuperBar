@@ -28,6 +28,7 @@ public sealed class ControlCenterService(IServiceProvider services, IUiDispatche
             services.GetRequiredService<IWidgetRegistry>(),
             services.GetRequiredService<IAppPaths>(),
             services.GetRequiredService<IAppLauncher>(),
+            services.GetRequiredService<IIconProvider>(),
             dispatcher);
 
         var window = new ControlCenterWindow(vm, services.GetRequiredService<IWindowChrome>());

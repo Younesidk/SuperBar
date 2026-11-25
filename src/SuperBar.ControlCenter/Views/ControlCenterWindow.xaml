@@ -331,18 +331,39 @@
         <StackPanel>
           <ItemsControl ItemsSource="{x:Bind Pinned}" IsTabStop="False">
             <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="settings:PinnedApp">
+              <DataTemplate x:DataType="vm:PinnedAppItemViewModel">
                 <Border Style="{StaticResource Card}" Padding="14,10">
-                  <StackPanel>
-                    <TextBlock Style="{StaticResource Label}" Text="{x:Bind DisplayName}" />
-                    <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Path}" />
-                  </StackPanel>
+                  <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid Width="32" Height="32" VerticalAlignment="Center">
+                      <Image Source="{x:Bind Icon}" Visibility="{x:Bind HasIcon}" Width="32" Height="32" Stretch="Uniform" />
+                      <FontIcon Glyph="&#xECAA;" FontSize="22" Visibility="{x:Bind ShowFallbackIcon}" Opacity="0.7" />
+                    </Grid>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                      <TextBlock Style="{StaticResource Label}" Text="{x:Bind DisplayName}" />
+                      <TextBlock Style="{StaticResource Hint}" Text="{x:Bind AppPath}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind AppPath}" />
+                    </StackPanel>
+                    <Button Grid.Column="2" VerticalAlignment="Center" Command="{x:Bind UnpinCommand}"
+                            AutomationProperties.Name="{x:Bind DisplayName}" ToolTipService.ToolTip="Unpin from taskbar">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE77A;" FontSize="14" />
+                        <TextBlock Text="Unpin" />
+                      </StackPanel>
+                    </Button>
+                  </Grid>
                 </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
+          <Border Style="{StaticResource Card}" Visibility="{x:Bind IsEmpty, Mode=OneWay}">
+            <TextBlock Style="{StaticResource Hint}" Text="Nothing is pinned. Right-click an app on the bar and choose Pin to taskbar." />
+          </Border>
           <Border Style="{StaticResource NotImplemented}">
-            <TextBlock Style="{StaticResource Hint}" Text="Planned: pin/unpin from the bar and from here, drag to reorder, import pins from the Windows taskbar, and resolving .lnk shortcuts to match running apps." />
+            <TextBlock Style="{StaticResource Hint}" Text="Planned: import pins from the Windows taskbar, pinning Store apps, and resolving .lnk shortcuts to match running apps." />
           </Border>
         </StackPanel>
       </DataTemplate>

@@ -15,7 +15,7 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
 {
     private PageViewModel _selectedPage;
 
-    public ControlCenterViewModel(ISettingsService settings, ITaskbarRuntimeController runtime, IWidgetRegistry widgets, IAppPaths paths, IAppLauncher launcher, IUiDispatcher dispatcher)
+    public ControlCenterViewModel(ISettingsService settings, ITaskbarRuntimeController runtime, IWidgetRegistry widgets, IAppPaths paths, IAppLauncher launcher, IIconProvider icons, IUiDispatcher dispatcher)
     {
         Pages = (PageViewModel[])
         [
@@ -23,7 +23,7 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
             new AppearancePageViewModel(settings, dispatcher),
             new LayoutPageViewModel(settings, widgets),
             new WidgetsPageViewModel(settings, widgets, dispatcher),
-            new ApplicationsPageViewModel(settings),
+            new ApplicationsPageViewModel(settings, icons, dispatcher),
             new AboutPageViewModel(paths, launcher),
         ];
         _selectedPage = Pages[0];
@@ -536,29 +536,97 @@ public sealed class WidgetItemViewModel : ObservableObject
     private WidgetInstanceSettings? Find(SuperBarSettings s) => s.Widgets.FirstOrDefault(x => x.InstanceId == InstanceId);
 }
 
-public sealed class ApplicationsPageViewModel : PageViewModel
+public sealed class ApplicationsPageViewModel : PageViewModel, IDisposable
 {
-    public ApplicationsPageViewModel(ISettingsService settings)
-        : base("Applications", "\uECAA", "Pinned applications shown on the bar.")
+    private const int IconPixelSize = 64; // crisp at 200% for the 32 DIP icon
+
+    private readonly ISettingsService _settings;
+    private readonly IIconProvider _icons;
+    private readonly IUiDispatcher _dispatcher;
+    private readonly Dictionary<string, ImageSource?> _iconCache = new(StringComparer.OrdinalIgnoreCase);
+    private string _signature = "";
+
+    public ApplicationsPageViewModel(ISettingsService settings, IIconProvider icons, IUiDispatcher dispatcher)
+        : base("Applications", "\uECAA", "Pinned applications shown on the bar. Pin or unpin from here or by right-clicking an app on the bar; drag apps on the bar to reorder them.")
     {
-        Settings = settings;
+        _settings = settings;
+        _icons = icons;
+        _dispatcher = dispatcher;
+        _settings.Changed += OnSettingsChanged;
         Reload();
     }
 
-    private ISettingsService Settings { get; }
+    public ObservableCollection<PinnedAppItemViewModel> Pinned { get; } = new();
 
-    public ObservableCollection<PinnedApp> Pinned { get; } = new();
+    public bool IsEmpty => Pinned.Count == 0;
 
     public override void OnNavigatedTo() => Reload();
 
+    // Pins change from the bar (Pin / Unpin, drag to reorder) while this page is open: follow live.
+    private void OnSettingsChanged(object? sender, SettingsChangedEventArgs e) => _dispatcher.Invoke(Reload);
+
     private void Reload()
     {
-        Pinned.Clear();
-        foreach (var p in Settings.Current.PinnedApps)
+        var pins = _settings.Current.PinnedApps;
+        var signature = string.Join("|", pins.Select(p => p.Id + "=" + p.Path + "=" + p.DisplayName));
+        if (signature == _signature)
         {
-            Pinned.Add(p);
+            return;
         }
+
+        _signature = signature;
+        Pinned.Clear();
+        foreach (var p in pins)
+        {
+            Pinned.Add(new PinnedAppItemViewModel(p, IconFor(p.Path), Unpin));
+        }
+
+        OnPropertyChanged(nameof(IsEmpty));
     }
+
+    private ImageSource? IconFor(string path)
+    {
+        if (!_iconCache.TryGetValue(path, out var icon))
+        {
+            icon = IconImages.ToBitmap(_icons.GetFileIcon(path, IconPixelSize));
+            _iconCache[path] = icon;
+        }
+
+        return icon;
+    }
+
+    private void Unpin(PinnedAppItemViewModel item) =>
+        _settings.Update(s => s.PinnedApps.RemoveAll(p => p.Id == item.Id));
+
+    public void Dispose() => _settings.Changed -= OnSettingsChanged;
+}
+
+/// <summary>One pinned application on the Applications page.</summary>
+public sealed class PinnedAppItemViewModel
+{
+    public PinnedAppItemViewModel(PinnedApp pin, ImageSource? icon, Action<PinnedAppItemViewModel> unpin)
+    {
+        Id = pin.Id;
+        DisplayName = string.IsNullOrWhiteSpace(pin.DisplayName) ? Path.GetFileNameWithoutExtension(pin.Path) : pin.DisplayName;
+        AppPath = pin.Path;
+        Icon = icon;
+        UnpinCommand = new RelayCommand(() => unpin(this));
+    }
+
+    public string Id { get; }
+
+    public string DisplayName { get; }
+
+    public string AppPath { get; }
+
+    public ImageSource? Icon { get; }
+
+    public bool HasIcon => Icon is not null;
+
+    /// <summary>Shown instead of the icon when the executable is missing or has none.</summary>
+    public bool ShowFallbackIcon => Icon is null;
+
+    public ICommand UnpinCommand { get; }
 }
 
 public sealed class AboutPageViewModel : PageViewModel

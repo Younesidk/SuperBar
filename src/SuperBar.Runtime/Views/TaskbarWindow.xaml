@@ -125,14 +125,14 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:AppButtonViewModel">
-              <Grid VerticalAlignment="Center">
+              <!-- Drag to reorder: see AppDragController. The click is routed through OnAppClick so a drag never clicks. -->
+              <Grid VerticalAlignment="Center" Loaded="OnAppItemLoaded">
               <views:StackPlate Background="{StaticResource SB.ActiveItem}"
                                 CornerRadius="{Binding ItemCornerRadius, Source={StaticResource SB.Theme}}"
                                 Opacity="{x:Bind views:TaskbarBrushes.StackOpacity(HasMultipleWindows, IsHovered, IsActive), Mode=OneWay}" />
               <Button Style="{StaticResource SbItemButton}"
                       Width="{Binding ItemSize, Source={StaticResource SB.Theme}}"
                       Background="{x:Bind views:TaskbarBrushes.ItemBackground(IsActive), Mode=OneWay}"
-                      Command="{x:Bind ClickCommand}"
                       Click="OnAppClick"
                       ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
                       ContextRequested="OnAppContextRequested"

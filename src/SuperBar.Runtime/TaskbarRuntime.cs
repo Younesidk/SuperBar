@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using SuperBar.Core.Layout;
 using SuperBar.Core.Runtime;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
@@ -85,7 +86,15 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         _logger.LogInformation("Enabling SuperBar");
 
         _tracker.Start();
-        _viewModel ??= CreateViewModel();
+        if (_viewModel is null)
+        {
+            _viewModel = CreateViewModel();
+            _viewModel.Apps.PinOrderChanged += keys =>
+                _settings.Update(s => s.PinnedApps = AppOrdering.ReorderPins(s.PinnedApps, keys));
+            _viewModel.Apps.PinRequested += (pin, index) => _settings.Update(s => AppOrdering.AddPin(s.PinnedApps, pin, index));
+            _viewModel.Apps.UnpinRequested += key => _settings.Update(s => AppOrdering.RemovePin(s.PinnedApps, key));
+        }
+
         _viewModel.Apply(settings);
 
         var monitor = _monitors.GetPrimaryMonitor();
