@@ -34,6 +34,17 @@ public sealed class WindowPreviewPopup : IDisposable
     private const int HideDelayMs = 300;
     private const int WatchIntervalMs = 150;
 
+    // Open: fade in while rising into place. Close: fade out while sinking, a little faster.
+    // Switching apps while open (also when the pointer races along the bar): the current content fades down, then
+    // the new content glides from where the popup was to its new place while fading back up. Hovering further
+    // buttons during the fade-down only changes which app comes next, so fast moves never stack animations.
+    private const double OpenMs = 180;
+    private const double CloseMs = 130;
+    private const double SwitchOutMs = 80;
+    private const double SwitchInMs = 200;
+    private const double SwitchDipOpacity = 0.2;
+    private const double SlideDip = 10;
+
     // Metrics (DIP).
     private const double MaxThumbnailWidth = 200;
     private const double MaxThumbnailHeight = 120;
@@ -114,6 +125,30 @@ public sealed class WindowPreviewPopup : IDisposable
     private bool _refreshQueued;
     private bool _disposed;
 
+    // Animation: the popup window's on-screen state (opacity and physical position) is tweened from _from to _to,
+    // one step per rendered frame.
+    private readonly record struct Frame(double Opacity, int X, int Y);
+
+    private Frame _current;
+    private Frame _from;
+    private Frame _to;
+    private double _duration;
+    private double _elapsed;
+    private Func<double, double> _easing = EaseOut;
+    private Action? _onAnimationDone;
+    private bool _animating;
+    private TimeSpan _lastFrame;
+    private nint _hwnd;
+
+    /// <summary>The popup window is shown (fully, or still fading in or out).</summary>
+    private bool _onScreen;
+
+    /// <summary>Fading down before switching to <see cref="_app"/>.</summary>
+    private bool _switching;
+
+    /// <summary>Physical size of the content currently on screen.</summary>
+    private PixelSize _shownSize;
+
     public WindowPreviewPopup(
         IWindowThumbnailService thumbnails,
         ICursorService cursor,
@@ -148,11 +183,12 @@ public sealed class WindowPreviewPopup : IDisposable
         }
 
         _hideTimer.Stop();
-        if (_visible)
+        if (_onScreen)
         {
-            // Moving along the bar while a preview is open switches immediately, like the Windows taskbar.
+            // Moving along the bar while a preview is open (or still fading out) switches without the hover delay,
+            // like the Windows taskbar.
             _showTimer.Stop();
-            if (!ReferenceEquals(app, _app))
+            if (!_visible || !ReferenceEquals(app, _app))
             {
                 ShowFor(app, anchor);
             }
@@ -182,25 +218,108 @@ public sealed class WindowPreviewPopup : IDisposable
         }
     }
 
-    public void Hide()
+    /// <summary>Closes the preview: fading out, or at once when <paramref name="animate"/> is false.</summary>
+    public void Hide(bool animate = true)
     {
         _showTimer.Stop();
         _hideTimer.Stop();
         _pendingApp = null;
-        if (!_visible)
+        _switching = false;
+        if (_visible)
         {
-            return;
+            _visible = false;
+            _watchTimer.Stop();
+            _tracker.WindowsChanged -= OnWindowsChanged;
+            _grace = default;
         }
 
-        _visible = false;
-        _watchTimer.Stop();
-        _tracker.WindowsChanged -= OnWindowsChanged;
+        if (animate && _onScreen && _hwnd != 0)
+        {
+            var sink = (int)Math.Round(SlideDip * _chrome.GetScale(_hwnd));
+            Animate(new Frame(0, _current.X, _bounds.Top + sink), CloseMs * _current.Opacity, EaseIn, FinishHide);
+        }
+        else
+        {
+            FinishHide();
+        }
+    }
+
+    /// <summary>Takes the popup off screen and releases its thumbnails, once it has faded out.</summary>
+    private void FinishHide()
+    {
+        StopAnimation();
+        _onScreen = false;
+        _switching = false;
+        _current = default;
         ClearThumbnails();
         _cards?.Children.Clear();
         _window?.AppWindow.Hide();
         _app = null;
         _shownApp = null;
-        _grace = default;
+    }
+
+    private void Animate(Frame to, double durationMs, Func<double, double> easing, Action? onDone = null)
+    {
+        _from = _current;
+        _to = to;
+        _duration = Math.Max(1, durationMs);
+        _elapsed = 0;
+        _easing = easing;
+        _onAnimationDone = onDone;
+        if (!_animating)
+        {
+            _animating = true;
+            _lastFrame = TimeSpan.Zero;
+            CompositionTarget.Rendering += OnRendering;
+        }
+    }
+
+    private void StopAnimation()
+    {
+        _onAnimationDone = null;
+        if (_animating)
+        {
+            _animating = false;
+            CompositionTarget.Rendering -= OnRendering;
+        }
+    }
+
+    private void OnRendering(object? sender, object e)
+    {
+        var now = e is RenderingEventArgs args ? args.RenderingTime : TimeSpan.Zero;
+        var step = _lastFrame == TimeSpan.Zero || now <= _lastFrame ? 16.0 : (now - _lastFrame).TotalMilliseconds;
+        _lastFrame = now;
+        _elapsed += Math.Min(step, 50); // one stalled frame must not skip the whole animation
+
+        var t = Math.Min(1, _elapsed / _duration);
+        var k = _easing(t);
+        _current = new Frame(
+            _from.Opacity + (_to.Opacity - _from.Opacity) * k,
+            (int)Math.Round(_from.X + (_to.X - _from.X) * k),
+            (int)Math.Round(_from.Y + (_to.Y - _from.Y) * k));
+        Apply(_current);
+
+        if (t >= 1)
+        {
+            var done = _onAnimationDone;
+            StopAnimation();
+            done?.Invoke();
+        }
+    }
+
+    /// <summary>Ease-out cubic: fast start, gentle landing.</summary>
+    private static double EaseOut(double t) => 1 - Math.Pow(1 - t, 3);
+
+    /// <summary>Ease-in quadratic: gentle start, quick exit.</summary>
+    private static double EaseIn(double t) => t * t;
+
+    private void Apply(Frame frame)
+    {
+        if (_hwnd != 0)
+        {
+            _chrome.SetOpacity(_hwnd, frame.Opacity);
+            _chrome.MoveTo(_hwnd, frame.X, frame.Y);
+        }
     }
 
     private void OnShowTimer()
@@ -263,22 +382,131 @@ public sealed class WindowPreviewPopup : IDisposable
         try
         {
             EnsureWindow();
+            var previous = _shownApp;
             _app = app;
             _anchor = anchor;
-            Rebuild();
+            BeginShowing();
+
+            if (!_onScreen)
+            {
+                Open();
+            }
+            else if (ReferenceEquals(previous, app) && !_switching)
+            {
+                // Hovered again while it was fading out: same content, just come back up.
+                Animate(new Frame(1, _bounds.Left, _bounds.Top), OpenMs, EaseOut);
+            }
+            else if (!_switching)
+            {
+                _switching = true;
+                Animate(_current with { Opacity = Math.Min(_current.Opacity, SwitchDipOpacity) }, SwitchOutMs, EaseIn, SwitchIn);
+            }
+
+            // Already fading down for a switch: SwitchIn picks up the latest _app when the fade-down ends.
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to show the window preview");
-            Hide();
+            Hide(animate: false);
         }
     }
 
-    private void Rebuild()
+    private void BeginShowing()
+    {
+        if (!_visible)
+        {
+            _visible = true;
+            _tracker.WindowsChanged += OnWindowsChanged;
+            _watchTimer.Start();
+        }
+    }
+
+    /// <summary>First appearance: fade in while rising into place.</summary>
+    private void Open()
+    {
+        if (!BuildContent())
+        {
+            return;
+        }
+
+        var rise = (int)Math.Round(SlideDip * _chrome.GetScale(_hwnd));
+        _current = new Frame(0, _bounds.Left, _bounds.Top + rise);
+        Apply(_current); // transparent before it is shown, so the first visible frame is part of the animation
+        _window!.AppWindow.MoveAndResize(new RectInt32(_current.X, _current.Y, _bounds.Width, _bounds.Height));
+        _chrome.ShowWithoutActivation(_hwnd);
+        _onScreen = true;
+        FinishLayout();
+        Animate(new Frame(1, _bounds.Left, _bounds.Top), OpenMs, EaseOut);
+    }
+
+    /// <summary>The fade-down of a switch ended: swap in the latest app and glide to its place.</summary>
+    private void SwitchIn()
+    {
+        _switching = false;
+        if (!_visible || _app is null)
+        {
+            return;
+        }
+
+        if (_app.Windows.Count == 0)
+        {
+            Hide();
+            return;
+        }
+
+        // Keep the popup's center and bottom edge where they were, then move to the new place.
+        var oldSize = _shownSize;
+        var centerX = _current.X + oldSize.Width / 2;
+        var bottom = _current.Y + oldSize.Height;
+        if (!BuildContent())
+        {
+            return;
+        }
+
+        _current = _current with { X = centerX - _bounds.Width / 2, Y = bottom - _bounds.Height };
+        _window!.AppWindow.MoveAndResize(new RectInt32(_current.X, _current.Y, _bounds.Width, _bounds.Height));
+        Apply(_current);
+        FinishLayout();
+        Animate(new Frame(1, _bounds.Left, _bounds.Top), SwitchInMs, EaseOut);
+    }
+
+    /// <summary>The windows of the shown app changed (one opened, closed or was retitled): update in place.</summary>
+    private void Refresh()
+    {
+        var animating = _animating;
+        if (!BuildContent())
+        {
+            return;
+        }
+
+        if (animating)
+        {
+            // Let the running animation land on the new place.
+            _from = _current;
+            _to = _to with { X = _bounds.Left, Y = _bounds.Top };
+            _window!.AppWindow.Resize(new SizeInt32(_bounds.Width, _bounds.Height));
+        }
+        else
+        {
+            _current = _current with { X = _bounds.Left, Y = _bounds.Top };
+            _window!.AppWindow.MoveAndResize(new RectInt32(_bounds.Left, _bounds.Top, _bounds.Width, _bounds.Height));
+        }
+
+        FinishLayout();
+    }
+
+    private void FinishLayout()
+    {
+        _root!.UpdateLayout();
+        PositionThumbnails();
+    }
+
+    /// <summary>Builds the cards and thumbnails for <see cref="_app"/> and computes <see cref="_bounds"/>; does not move the window.</summary>
+    private bool BuildContent()
     {
         if (_app is null || _window is null || _root is null || _cards is null)
         {
-            return;
+            return false;
         }
 
         ClearThumbnails();
@@ -286,7 +514,7 @@ public sealed class WindowPreviewPopup : IDisposable
         var previousApp = _shownApp;
         _shownApp = _app;
 
-        var hwnd = WindowNative.GetWindowHandle(_window);
+        var hwnd = _hwnd;
         var scale = _chrome.GetScale(hwnd);
         var windows = _app.Windows.ToList();
         var active = _tracker.ActiveWindow;
@@ -326,20 +554,10 @@ public sealed class WindowPreviewPopup : IDisposable
             (int)Math.Round(GapAboveBar * scale),
             monitor,
             (int)Math.Round(ScreenMargin * scale));
-        _window.AppWindow.MoveAndResize(new RectInt32(bounds.Left, bounds.Top, bounds.Width, bounds.Height));
-        _grace = _visible && ReferenceEquals(previousApp, _app) ? _bounds.Union(_grace.IsEmpty ? _bounds : _grace) : default;
+        _grace = _onScreen && ReferenceEquals(previousApp, _app) ? _bounds.Union(_grace.IsEmpty ? _bounds : _grace) : default;
         _bounds = bounds;
-
-        if (!_visible)
-        {
-            _visible = true;
-            _tracker.WindowsChanged += OnWindowsChanged;
-            _chrome.ShowWithoutActivation(hwnd);
-            _watchTimer.Start();
-        }
-
-        _root.UpdateLayout();
-        PositionThumbnails();
+        _shownSize = new PixelSize(bounds.Width, bounds.Height);
+        return true;
     }
 
     private FrameworkElement CreateCard(TrackedWindow window, bool isActive, IWindowThumbnail? thumbnail, PreviewSlot slot, double contentHeight)
@@ -472,13 +690,18 @@ public sealed class WindowPreviewPopup : IDisposable
                 return;
             }
 
+            if (_switching)
+            {
+                return; // SwitchIn builds from the current windows anyway
+            }
+
             if (_app.Windows.Count == 0)
             {
                 Hide();
             }
             else if (Snapshot(_app.Windows, _tracker.ActiveWindow) != _snapshot)
             {
-                Rebuild();
+                Refresh();
             }
         });
     }
@@ -523,6 +746,7 @@ public sealed class WindowPreviewPopup : IDisposable
         window.AppWindow.Closing += (_, args) => args.Cancel = !_disposed;
 
         var hwnd = WindowNative.GetWindowHandle(window);
+        _hwnd = hwnd;
         _chrome.ApplyShellSurfaceStyle(hwnd, roundedCorners: true);
         _tracker.Ignore(hwnd);
 
@@ -550,7 +774,7 @@ public sealed class WindowPreviewPopup : IDisposable
             return;
         }
 
-        Hide();
+        Hide(animate: false);
         _disposed = true;
         _showTimer.Dispose();
         _hideTimer.Dispose();

@@ -246,7 +246,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         // Suspend widgets and timers while a game / video is full-screen.
         if (fullscreen)
         {
-            _preview?.Hide();
+            _preview?.Hide(animate: false);
             _viewModel?.Deactivate();
         }
         else

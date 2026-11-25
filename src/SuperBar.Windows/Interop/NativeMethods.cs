@@ -269,6 +269,8 @@ internal static class NativeMethods
     public const long WS_EX_TOOLWINDOW = 0x00000080;
     public const long WS_EX_APPWINDOW = 0x00040000;
     public const long WS_EX_NOACTIVATE = 0x08000000;
+    public const long WS_EX_LAYERED = 0x00080000;
+    public const uint LWA_ALPHA = 0x2;
     public const uint WS_POPUP = 0x80000000;
     public const long WS_CAPTION = 0x00C00000;
     public const long WS_THICKFRAME = 0x00040000;
@@ -518,6 +520,10 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern uint GetDpiForWindow(nint hwnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetLayeredWindowAttributes(nint hwnd, uint crKey, byte bAlpha, uint dwFlags);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern nint OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, uint dwProcessId);

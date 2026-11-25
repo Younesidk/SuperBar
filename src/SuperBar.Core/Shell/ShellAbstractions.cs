@@ -218,6 +218,15 @@ public interface IWindowChrome
     /// <summary>Shows the window without activating it or stealing focus (SW_SHOWNOACTIVATE).</summary>
     void ShowWithoutActivation(nint windowHandle);
 
+    /// <summary>
+    /// Sets the whole window's opacity (0..1), content, backdrop, DWM thumbnails and outline included. Used to animate
+    /// popups. The window becomes a layered window on first use.
+    /// </summary>
+    void SetOpacity(nint windowHandle, double opacity);
+
+    /// <summary>Moves the window without resizing, activating or reordering it (physical pixels).</summary>
+    void MoveTo(nint windowHandle, int x, int y);
+
     /// <summary>The window's DPI scale (1.0 = 96 DPI).</summary>
     double GetScale(nint windowHandle);
 }

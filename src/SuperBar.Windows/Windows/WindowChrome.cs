@@ -62,6 +62,21 @@ internal sealed class WindowChrome(ILogger<WindowChrome> logger) : IWindowChrome
 
     public void ShowWithoutActivation(nint windowHandle) => ShowWindow(windowHandle, SW_SHOWNOACTIVATE);
 
+    public void SetOpacity(nint windowHandle, double opacity)
+    {
+        var exStyle = (long)GetWindowLongPtr(windowHandle, GWL_EXSTYLE);
+        if ((exStyle & WS_EX_LAYERED) == 0)
+        {
+            SetWindowLongPtr(windowHandle, GWL_EXSTYLE, (nint)(exStyle | WS_EX_LAYERED));
+        }
+
+        var alpha = (byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255);
+        SetLayeredWindowAttributes(windowHandle, 0, alpha, LWA_ALPHA);
+    }
+
+    public void MoveTo(nint windowHandle, int x, int y) =>
+        SetWindowPos(windowHandle, 0, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+
     public double GetScale(nint windowHandle)
     {
         var dpi = windowHandle == 0 ? 0 : GetDpiForWindow(windowHandle);
