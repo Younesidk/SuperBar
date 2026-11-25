@@ -15,14 +15,23 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
 {
     private PageViewModel _selectedPage;
 
-    public ControlCenterViewModel(ISettingsService settings, ITaskbarRuntimeController runtime, IWidgetRegistry widgets, IAppPaths paths, IAppLauncher launcher, IIconProvider icons, IUiDispatcher dispatcher)
+    public ControlCenterViewModel(
+        ISettingsService settings,
+        ITaskbarRuntimeController runtime,
+        IWidgetRegistry widgets,
+        IWidgetSettingsEditors settingsEditors,
+        ISettingsStore store,
+        IAppPaths paths,
+        IAppLauncher launcher,
+        IIconProvider icons,
+        IUiDispatcher dispatcher)
     {
         Pages = (PageViewModel[])
         [
             new GeneralPageViewModel(settings, runtime),
             new AppearancePageViewModel(settings, dispatcher),
             new LayoutPageViewModel(settings, widgets),
-            new WidgetsPageViewModel(settings, widgets, dispatcher),
+            new WidgetsPageViewModel(settings, widgets, settingsEditors, store, dispatcher),
             new ApplicationsPageViewModel(settings, icons, dispatcher),
             new AboutPageViewModel(paths, launcher),
         ];
@@ -175,7 +184,7 @@ public sealed class AppearancePageViewModel : PageViewModel
     private string _accent;
 
     public AppearancePageViewModel(ISettingsService settings, IUiDispatcher dispatcher)
-        : base("Appearance", "", "Size, transparency, corners and colors of the bar.")
+        : base("Appearance", "\uE790", "Size, transparency, corners and colors of the bar.")
     {
         _settings = settings;
         _debounce = new Debouncer(dispatcher, TimeSpan.FromMilliseconds(120));
@@ -441,101 +450,6 @@ public sealed class LayoutItemViewModel : ObservableObject
             }
         }
     }
-}
-
-public sealed class WidgetsPageViewModel : PageViewModel
-{
-    private readonly ISettingsService _settings;
-    private readonly IWidgetRegistry _registry;
-    private readonly IUiDispatcher _dispatcher;
-
-    public WidgetsPageViewModel(ISettingsService settings, IWidgetRegistry registry, IUiDispatcher dispatcher)
-        : base("Widgets", "\uE71D", "Widgets live directly inside the bar. Enable them and size their slots.")
-    {
-        _settings = settings;
-        _registry = registry;
-        _dispatcher = dispatcher;
-        Reload();
-    }
-
-    public ObservableCollection<WidgetItemViewModel> Instances { get; } = new();
-
-    public IReadOnlyList<WidgetDescriptor> AvailableTypes => _registry.All.ToList();
-
-    /// <summary>Bulleted names of <see cref="AvailableTypes"/>.</summary>
-    public IReadOnlyList<string> AvailableTypeLabels => _registry.All.Select(d => $"• {d.DisplayName}").ToList();
-
-    public override void OnNavigatedTo() => Reload();
-
-    private void Reload()
-    {
-        Instances.Clear();
-        foreach (var w in _settings.Current.Widgets)
-        {
-            if (_registry.TryGet(w.TypeId, out var d))
-            {
-                Instances.Add(new WidgetItemViewModel(_settings, _dispatcher, w.InstanceId, d, w.Enabled, d.ResolveWidth(w.Width)));
-            }
-        }
-    }
-}
-
-public sealed class WidgetItemViewModel : ObservableObject
-{
-    private readonly ISettingsService _settings;
-    private readonly Debouncer _debounce;
-    private bool _enabled;
-    private double _width;
-
-    public WidgetItemViewModel(ISettingsService settings, IUiDispatcher dispatcher, string instanceId, WidgetDescriptor descriptor, bool enabled, double width)
-    {
-        _settings = settings;
-        _debounce = new Debouncer(dispatcher, TimeSpan.FromMilliseconds(120));
-        InstanceId = instanceId;
-        Descriptor = descriptor;
-        _enabled = enabled;
-        _width = width;
-    }
-
-    public string InstanceId { get; }
-    public WidgetDescriptor Descriptor { get; }
-    public string DisplayName => Descriptor.DisplayName;
-    public string Description => Descriptor.Description;
-    public double MinWidth => Descriptor.MinWidth;
-    public double MaxWidth => Descriptor.MaxWidth;
-
-    /// <summary>Only fixed-size widgets have a slot width to choose; the others follow their content.</summary>
-    public bool CanResize => Descriptor.Sizing == WidgetSizing.Fixed;
-
-    public bool Enabled
-    {
-        get => _enabled;
-        set
-        {
-            if (SetProperty(ref _enabled, value))
-            {
-                _settings.Update(s => Find(s)!.Enabled = value);
-            }
-        }
-    }
-
-    public double Width
-    {
-        get => _width;
-        set
-        {
-            if (SetProperty(ref _width, Math.Round(value)))
-            {
-                OnPropertyChanged(nameof(WidthLabel));
-                var w = _width;
-                _debounce.Run(() => _settings.Update(s => Find(s)!.Width = w));
-            }
-        }
-    }
-
-    public string WidthLabel => AppearancePageViewModel.FormatPx(_width);
-
-    private WidgetInstanceSettings? Find(SuperBarSettings s) => s.Widgets.FirstOrDefault(x => x.InstanceId == InstanceId);
 }
 
 public sealed class ApplicationsPageViewModel : PageViewModel, IDisposable

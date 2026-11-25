@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
@@ -90,6 +91,112 @@ public sealed class ClockWidgetTests : IDisposable
         Model.Open.Execute();
 
         Assert.Equal(1, _shell.NotificationCenterToggles);
+    }
+
+    private static WidgetInstanceSettings Options(params (string Key, JsonNode? Value)[] options)
+    {
+        var settings = new WidgetInstanceSettings { InstanceId = DefaultSettings.ClockWidgetInstanceId, TypeId = DefaultSettings.ClockWidgetType };
+        foreach (var (key, value) in options)
+        {
+            settings.Options[key] = value;
+        }
+
+        return settings;
+    }
+
+    [Fact]
+    public void With_seconds_it_wakes_every_second_aligned_to_the_second()
+    {
+        _host.Apply(Options(("showSeconds", true)));
+        _host.Activate();
+
+        Assert.Equal("09:26:53", Model.Time);
+        var timer = Assert.Single(_ui.LiveTimers);
+        Assert.Equal(TimeSpan.FromMilliseconds(520), timer.Interval);
+
+        _time.Now = _time.Now.AddMilliseconds(520);
+        timer.Fire();
+        Assert.Equal("09:26:54", Model.Time);
+        Assert.Equal(TimeSpan.FromMilliseconds(1000), Assert.Single(_ui.LiveTimers).Interval);
+    }
+
+    [Fact]
+    public void Turning_seconds_on_and_off_live_switches_the_wake_up_rate_without_stacking_timers()
+    {
+        _host.Activate();
+        var minuteTimer = Assert.Single(_ui.LiveTimers);
+
+        _host.Apply(Options(("showSeconds", true)));
+
+        Assert.Equal("09:26:53", Model.Time); // redrawn at once, not at the next minute
+        var secondTimer = _ui.LiveTimers.Single(t => t != minuteTimer);
+        Assert.Equal(TimeSpan.FromMilliseconds(520), secondTimer.Interval);
+
+        // The orphaned minute wake-up fires once, does nothing and does not re-arm.
+        var before = Model.Time;
+        minuteTimer.Fire();
+        Assert.Equal(before, Model.Time);
+        Assert.Same(secondTimer, Assert.Single(_ui.LiveTimers));
+
+        _host.Apply(Options(("showSeconds", false)));
+        Assert.Equal("09:26", Model.Time);
+        secondTimer.Fire(); // orphaned as well
+        var timer = Assert.Single(_ui.LiveTimers);
+        Assert.Equal(TimeSpan.FromMilliseconds(6550), timer.Interval);
+    }
+
+    [Fact]
+    public void Settings_changed_while_hidden_apply_on_the_next_activation()
+    {
+        _host.Activate();
+        _host.Deactivate();
+
+        _host.Apply(Options(("showSeconds", true), ("showDate", false)));
+        Assert.Empty(_ui.LiveTimers);
+
+        _host.Activate();
+        Assert.Equal("09:26:53", Model.Time);
+        Assert.False(Model.ShowDate);
+        Assert.Equal(TimeSpan.FromMilliseconds(520), Assert.Single(_ui.LiveTimers).Interval);
+    }
+
+    [Theory]
+    [InlineData("System", false, 9, "09:26")]
+    [InlineData("TwentyFourHour", false, 21, "21:26")]
+    [InlineData("TwentyFourHour", true, 21, "21:26:53")]
+    [InlineData("TwelveHour", false, 21, "9:26 PM")]
+    [InlineData("TwelveHour", true, 9, "9:26:53 AM")]
+    public void The_time_format_follows_the_settings(string format, bool seconds, int hour, string expected)
+    {
+        _time.Now = new DateTimeOffset(2026, 3, 14, hour, 26, 53, 500, TimeSpan.Zero);
+        _host.Apply(Options(("timeFormat", format), ("showSeconds", seconds)));
+
+        _host.Activate();
+
+        Assert.Equal(expected, Model.Time);
+    }
+
+    [Fact]
+    public void A_twelve_hour_clock_has_an_am_pm_marker_even_in_cultures_without_one()
+    {
+        var culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        culture.DateTimeFormat.AMDesignator = "";
+        culture.DateTimeFormat.PMDesignator = "";
+
+        var time = ClockModel.FormatTime(new DateTime(2026, 1, 1, 15, 4, 0), culture, new ClockSettings { TimeFormat = ClockTimeFormat.TwelveHour });
+
+        Assert.Equal("3:04 PM", time);
+    }
+
+    [Fact]
+    public void The_date_can_be_hidden()
+    {
+        _host.Activate();
+        Assert.True(Model.ShowDate);
+
+        _host.Apply(Options(("showDate", false)));
+
+        Assert.False(Model.ShowDate);
     }
 
     [Theory]

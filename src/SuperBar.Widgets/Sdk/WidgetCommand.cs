@@ -44,7 +44,8 @@ public sealed class WidgetCommand : ICommand
         }
     }
 
-    internal void Bind(Action<object?> handler)
+    /// <summary>Replaces the handler (never adds a second one); null unbinds the command and disables it.</summary>
+    internal void Bind(Action<object?>? handler)
     {
         _handler = handler;
         CanExecuteChanged?.Invoke(this, EventArgs.Empty);

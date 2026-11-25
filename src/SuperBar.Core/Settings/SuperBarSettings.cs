@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+
 namespace SuperBar.Core.Settings;
 
 public enum ThemeMode
@@ -81,7 +83,12 @@ public sealed class WidgetInstanceSettings
     /// <summary>Requested width in DIPs; clamped to the widget type's min/max at runtime. Null = type default.</summary>
     public double? Width { get; set; }
 
-    public Dictionary<string, string> Options { get; set; } = new();
+    /// <summary>
+    /// The widget type's own settings, as JSON. Values are typed (numbers, booleans) since schema 2; rows saved by
+    /// schema 1 hold strings, which the widget settings binder converts. Owned by the widget type: the rest of
+    /// SuperBar never interprets it.
+    /// </summary>
+    public JsonObject Options { get; set; } = new();
 }
 
 public sealed class PinnedApp

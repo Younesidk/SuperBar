@@ -90,23 +90,32 @@ public interface IWidgetScope
 public sealed class WidgetContext
 {
     private readonly Action<Action, string>? _guard;
+    private readonly Action<JsonObject>? _saveSettings;
 
-    /// <summary>Creates a context without a host (tests): callbacks run unguarded.</summary>
-    public WidgetContext(string instanceId, ILogger logger)
-        : this(instanceId, logger, null)
+    /// <summary>Creates a context without a host (tests): callbacks run unguarded and settings are not persisted.</summary>
+    public WidgetContext(string instanceId, ILogger logger, IWidgetStateStore? state = null)
+        : this(instanceId, logger, state ?? new InMemoryWidgetStateStore(), null, null)
     {
     }
 
-    internal WidgetContext(string instanceId, ILogger logger, Action<Action, string>? guard)
+    internal WidgetContext(string instanceId, ILogger logger, IWidgetStateStore state, Action<Action, string>? guard, Action<JsonObject>? saveSettings)
     {
         InstanceId = instanceId;
         Logger = logger;
+        State = state;
         _guard = guard;
+        _saveSettings = saveSettings;
     }
 
     public string InstanceId { get; }
 
     public ILogger Logger { get; }
+
+    /// <summary>This instance's runtime state (not settings). Saving it does not touch the bar's layout.</summary>
+    public IWidgetStateStore State { get; }
+
+    /// <summary>Persists changed settings values of this instance (merged into its stored options).</summary>
+    internal void SaveSettings(JsonObject values) => _saveSettings?.Invoke(values);
 
     /// <summary>Runs widget code behind the host's fault guard.</summary>
     internal void Invoke(Action action, string operation)

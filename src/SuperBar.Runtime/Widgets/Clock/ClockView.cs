@@ -65,6 +65,7 @@ public sealed partial class ClockView : WidgetViewBase
     {
         _time.Text = _model.Time;
         _date.Text = _model.Date;
+        _date.Visibility = _model.ShowDate ? Visibility.Visible : Visibility.Collapsed;
         ToolTipService.SetToolTip(_button, string.IsNullOrEmpty(_model.ToolTip) ? null : _model.ToolTip);
     }
 }

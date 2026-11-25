@@ -53,6 +53,24 @@ public sealed record WidgetDescriptor
     /// <summary>The widget class this descriptor was discovered from; null for hand-built descriptors.</summary>
     public Type? WidgetType { get; init; }
 
+    /// <summary>The widget's settings class (<c>TSettings</c> of <see cref="WidgetBase{TSettings, TModel}"/>), if it has one.</summary>
+    public Type? SettingsType
+    {
+        get => _settingsType;
+        init
+        {
+            _settingsType = value;
+
+            // Built eagerly: a [Setting] the form cannot show fails at start-up, not when the Control Center opens.
+            SettingsSchema = value is null ? null : WidgetSettingsSchema.For(value);
+        }
+    }
+
+    /// <summary>The generated settings form of <see cref="SettingsType"/>; null for widgets without settings.</summary>
+    public WidgetSettingsSchema? SettingsSchema { get; private init; }
+
+    private readonly Type? _settingsType;
+
     public double ResolveWidth(double? requested) =>
         requested is { } w && !double.IsNaN(w) ? Math.Clamp(w, MinWidth, MaxWidth) : DefaultWidth;
 
@@ -90,7 +108,21 @@ public sealed record WidgetDescriptor
             DefaultZone = attribute.DefaultZone,
             AllowMultiple = attribute.AllowMultiple,
             WidgetType = type,
+            SettingsType = SettingsTypeOf(type),
         };
+    }
+
+    private static Type? SettingsTypeOf(Type widgetType)
+    {
+        for (var t = widgetType.BaseType; t is not null; t = t.BaseType)
+        {
+            if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(WidgetBase<,>))
+            {
+                return t.GetGenericArguments()[0];
+            }
+        }
+
+        return null;
     }
 }
 

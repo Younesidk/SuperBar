@@ -9,6 +9,7 @@ namespace SuperBar.Widgets;
 /// </summary>
 public abstract class WidgetBase : IWidget
 {
+    private readonly HashSet<WidgetCommand> _commands = new();
     private bool _disposed;
 
     protected WidgetBase(WidgetContext context)
@@ -34,7 +35,12 @@ public abstract class WidgetBase : IWidget
     {
     }
 
-    /// <summary>Attaches the handler of a model command (see <see cref="WidgetCommand"/>).</summary>
+    /// <summary>
+    /// Attaches the handler of a model command (see <see cref="WidgetCommand"/>). Usually called once, from the
+    /// constructor. Calling it again for the same command replaces the handler, so wiring commands in
+    /// <see cref="OnActivated"/> never stacks handlers either. Every handler is detached when the widget is disposed
+    /// (also when it faults), so a view that outlives the widget cannot reach it.
+    /// </summary>
     protected void On(WidgetCommand command, Action handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -46,6 +52,12 @@ public abstract class WidgetBase : IWidget
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(handler);
+        if (_disposed)
+        {
+            return;
+        }
+
+        _commands.Add(command);
         command.Bind(parameter => Context.Invoke(() => handler(parameter), "command"));
     }
 
@@ -75,6 +87,12 @@ public abstract class WidgetBase : IWidget
         }
 
         _disposed = true;
+        foreach (var command in _commands)
+        {
+            command.Bind(null);
+        }
+
+        _commands.Clear();
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
     }
@@ -88,7 +106,8 @@ public abstract class WidgetBase : IWidget
 /// <summary>
 /// Base class of a widget with typed settings and a typed presentation model.
 /// <see cref="Settings"/> is populated before <see cref="WidgetBase.OnInitializeAsync"/> runs, without calling
-/// <see cref="OnSettingsChanged"/>; later edits arrive through <see cref="OnSettingsChanged"/>.
+/// <see cref="OnSettingsChanged"/>; later changes — edited in the Control Center or saved by the widget itself
+/// with <see cref="SaveSettings"/> — arrive through <see cref="OnSettingsChanged"/>.
 /// </summary>
 public abstract class WidgetBase<TSettings, TModel>(WidgetContext context, TModel model) : WidgetBase(context)
     where TSettings : class, new()
@@ -98,12 +117,27 @@ public abstract class WidgetBase<TSettings, TModel>(WidgetContext context, TMode
 
     public sealed override object ViewModel => Model;
 
-    /// <summary>The current settings of this instance. Treat as read-only.</summary>
+    /// <summary>The current settings of this instance. Treat as read-only; change them with <see cref="SaveSettings"/>.</summary>
     protected TSettings Settings { get; private set; } = new();
 
-    /// <summary>The user changed the settings; <see cref="Settings"/> already holds the new values.</summary>
+    /// <summary>The settings changed; <see cref="Settings"/> already holds the new values.</summary>
     protected virtual void OnSettingsChanged(TSettings previous)
     {
+    }
+
+    /// <summary>
+    /// Changes and persists this instance's settings without recreating the widget, then calls
+    /// <see cref="OnSettingsChanged"/> once. The saved values do not come back as a second change notification.
+    /// </summary>
+    protected void SaveSettings(Action<TSettings> change)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        var previous = Settings;
+        var next = WidgetSettingsBinder.Clone(previous);
+        change(next);
+        Settings = next;
+        Context.SaveSettings(WidgetSettingsBinder.ToJson(next));
+        OnSettingsChanged(previous);
     }
 
     private protected sealed override void LoadSettingsCore(JsonObject settings) =>

@@ -35,7 +35,7 @@ public static class SettingsNormalizer
             .ToList();
         foreach (var w in settings.Widgets)
         {
-            w.Options ??= new Dictionary<string, string>();
+            w.Options ??= new System.Text.Json.Nodes.JsonObject();
             if (w.Width is { } width && (double.IsNaN(width) || width <= 0))
             {
                 w.Width = null;

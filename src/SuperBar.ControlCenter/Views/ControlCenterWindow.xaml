@@ -277,24 +277,100 @@
         </StackPanel>
       </DataTemplate>
 
+      <!-- Widgets: generated settings fields, one template per kind -->
+      <DataTemplate x:Key="ToggleFieldTemplate" x:DataType="vm:ToggleSettingViewModel">
+        <Grid ColumnSpacing="16" Margin="0,6,0,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="{x:Bind Label}" TextWrapping="Wrap" />
+            <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" Visibility="{x:Bind HasDescription}" />
+          </StackPanel>
+          <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsOn="{x:Bind Value, Mode=TwoWay}"
+                        AutomationProperties.Name="{x:Bind Label}" />
+        </Grid>
+      </DataTemplate>
+      <DataTemplate x:Key="ChoiceFieldTemplate" x:DataType="vm:ChoiceSettingViewModel">
+        <Grid ColumnSpacing="16" Margin="0,6,0,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="{x:Bind Label}" TextWrapping="Wrap" />
+            <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" Visibility="{x:Bind HasDescription}" />
+          </StackPanel>
+          <ComboBox Grid.Column="1" MinWidth="160" VerticalAlignment="Center" ItemsSource="{x:Bind Options}"
+                    SelectedIndex="{x:Bind SelectedIndex, Mode=TwoWay}" AutomationProperties.Name="{x:Bind Label}" />
+        </Grid>
+      </DataTemplate>
+      <DataTemplate x:Key="NumberFieldTemplate" x:DataType="vm:NumberSettingViewModel">
+        <StackPanel Margin="0,6,0,0">
+          <Grid ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center">
+              <TextBlock Text="{x:Bind Label}" TextWrapping="Wrap" />
+              <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" Visibility="{x:Bind HasDescription}" />
+            </StackPanel>
+            <TextBlock Grid.Column="1" Style="{StaticResource Hint}" VerticalAlignment="Center"
+                       Text="{x:Bind ValueLabel, Mode=OneWay}" Visibility="{x:Bind HasRange}" />
+            <NumberBox Grid.Column="1" MinWidth="120" VerticalAlignment="Center" SpinButtonPlacementMode="Compact"
+                       Minimum="{x:Bind Minimum}" Maximum="{x:Bind Maximum}" SmallChange="{x:Bind Step}"
+                       Value="{x:Bind Value, Mode=TwoWay}" Visibility="{x:Bind UsesNumberBox}"
+                       AutomationProperties.Name="{x:Bind Label}" />
+          </Grid>
+          <Slider Minimum="{x:Bind Minimum}" Maximum="{x:Bind Maximum}" StepFrequency="{x:Bind Step}"
+                  Value="{x:Bind Value, Mode=TwoWay}" Visibility="{x:Bind HasRange}"
+                  AutomationProperties.Name="{x:Bind Label}" />
+        </StackPanel>
+      </DataTemplate>
+      <DataTemplate x:Key="TextFieldTemplate" x:DataType="vm:TextSettingViewModel">
+        <StackPanel Margin="0,6,0,0" Spacing="4">
+          <TextBlock Text="{x:Bind Label}" TextWrapping="Wrap" />
+          <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" Visibility="{x:Bind HasDescription}" />
+          <TextBox Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{x:Bind Label}" />
+        </StackPanel>
+      </DataTemplate>
+      <views:SettingFieldTemplateSelector x:Key="SettingFieldTemplateSelector"
+                                          Toggle="{StaticResource ToggleFieldTemplate}"
+                                          Choice="{StaticResource ChoiceFieldTemplate}"
+                                          Number="{StaticResource NumberFieldTemplate}"
+                                          Text="{StaticResource TextFieldTemplate}" />
+
       <!-- Widgets -->
       <DataTemplate x:Key="WidgetsPageTemplate" x:DataType="vm:WidgetsPageViewModel">
         <StackPanel>
+          <TextBlock Style="{StaticResource Label}" Text="On the bar" Margin="0,0,0,8" />
           <ItemsControl ItemsSource="{x:Bind Instances}" IsTabStop="False">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:WidgetItemViewModel">
                 <Border Style="{StaticResource Card}">
                   <StackPanel Spacing="6">
-                    <Grid ColumnSpacing="16">
+                    <Grid ColumnSpacing="14">
                       <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                       </Grid.ColumnDefinitions>
-                      <StackPanel>
+                      <FontIcon Glyph="{x:Bind Glyph}" FontSize="20" VerticalAlignment="Center" Opacity="0.85" />
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock Style="{StaticResource Label}" Text="{x:Bind DisplayName}" />
-                        <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" />
+                        <TextBlock Style="{StaticResource Hint}" Text="{x:Bind ZoneLabel}" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsOn="{x:Bind Enabled, Mode=TwoWay}"
+                      <Button Grid.Column="2" VerticalAlignment="Center" Command="{x:Bind RemoveCommand}"
+                              ToolTipService.ToolTip="Remove from the bar" AutomationProperties.Name="{x:Bind RemoveLabel}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                          <TextBlock Text="Remove" />
+                        </StackPanel>
+                      </Button>
+                      <ToggleSwitch Grid.Column="3" Style="{StaticResource CardToggle}" IsOn="{x:Bind Enabled, Mode=TwoWay}"
                                     AutomationProperties.Name="{x:Bind DisplayName}" />
                     </Grid>
                     <Grid Margin="0,6,0,0" Visibility="{x:Bind CanResize}">
@@ -302,28 +378,54 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                       </Grid.ColumnDefinitions>
-                      <TextBlock Style="{StaticResource Hint}" Text="Slot width" />
+                      <TextBlock Text="Slot width" />
                       <TextBlock Grid.Column="1" Style="{StaticResource Hint}" Text="{x:Bind WidthLabel, Mode=OneWay}" />
                     </Grid>
                     <Slider Minimum="{x:Bind MinWidth}" Maximum="{x:Bind MaxWidth}" StepFrequency="1"
                             Value="{x:Bind Width, Mode=TwoWay}" AutomationProperties.Name="Slot width"
                             Visibility="{x:Bind CanResize}" />
+                    <ItemsControl ItemsSource="{x:Bind Fields}" IsTabStop="False" Visibility="{x:Bind HasGeneratedForm}"
+                                  ItemTemplateSelector="{StaticResource SettingFieldTemplateSelector}" />
+                    <ContentControl Content="{x:Bind CustomEditor}" Visibility="{x:Bind HasCustomEditor}"
+                                    HorizontalContentAlignment="Stretch" IsTabStop="False" Margin="0,6,0,0" />
                   </StackPanel>
                 </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-          <TextBlock Style="{StaticResource Label}" Text="Available widget types" Margin="0,16,0,8" />
-          <ItemsControl ItemsSource="{x:Bind AvailableTypeLabels}" IsTabStop="False">
+          <Border Style="{StaticResource Card}" Visibility="{x:Bind IsEmpty, Mode=OneWay}">
+            <TextBlock Style="{StaticResource Hint}" Text="No widgets on the bar. Add one below." />
+          </Border>
+
+          <TextBlock Style="{StaticResource Label}" Text="Add a widget" Margin="0,16,0,8" />
+          <ItemsControl ItemsSource="{x:Bind Types}" IsTabStop="False">
             <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="x:String">
-                <TextBlock Style="{StaticResource Hint}" Text="{x:Bind}" />
+              <DataTemplate x:DataType="vm:WidgetTypeViewModel">
+                <Border Style="{StaticResource Card}">
+                  <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Glyph="{x:Bind Glyph}" FontSize="20" VerticalAlignment="Center" Opacity="0.85" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                      <TextBlock Style="{StaticResource Label}" Text="{x:Bind DisplayName}" />
+                      <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" />
+                      <TextBlock Style="{StaticResource Hint}" Text="{x:Bind AvailabilityHint}" Opacity="0.8" />
+                    </StackPanel>
+                    <Button Grid.Column="2" VerticalAlignment="Center" Command="{x:Bind AddCommand}" IsEnabled="{x:Bind CanAdd}"
+                            AutomationProperties.Name="{x:Bind AddLabel}" ToolTipService.ToolTip="Add to the bar">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE710;" FontSize="14" />
+                        <TextBlock Text="Add" />
+                      </StackPanel>
+                    </Button>
+                  </Grid>
+                </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-          <Border Style="{StaticResource NotImplemented}">
-            <TextBlock Style="{StaticResource Hint}" Text="Planned: adding multiple widget instances, per-widget settings, and more widget types (calendar, weather, media, session statistics)." />
-          </Border>
         </StackPanel>
       </DataTemplate>
 

@@ -111,6 +111,12 @@ While active, a widget starts all of its work through the `IWidgetScope` it rece
 
 The scope ends on deactivation, so nothing has to be stopped by hand. Views talk back through `WidgetCommand`s on the model, which the widget wires with `On(Model.Command, handler)`.
 
+Settings and state:
+
+- **Settings** are a plain class, the `TSettings` of `WidgetBase<TSettings, TModel>`. Properties marked `[Setting("Label", ...)]` appear in the Control Center as a generated form (switch, slider or number box, drop-down, text box). Edits reach the running widget live through `OnSettingsChanged`, and the widget can change its own settings with `SaveSettings(s => ...)`. They are stored as typed JSON in the instance's `options`; values saved as strings by older versions are still read.
+- **Custom editor:** a WinUI view in SuperBar.ControlCenter marked `[WidgetSettingsViewFor(typeof(TSettings))]` replaces the generated form for that settings class.
+- **State** that is not a setting (a running countdown, a cached value) goes to `Context.State`. It is kept in its own row (`widget-state:{instanceId}`), so saving it never re-lays out the bar.
+
 Fault isolation: every call into a widget is guarded. A widget that throws (in a lifecycle method, a timer tick, a result handler or a command) is disposed and replaced by an error placeholder, then restarted after 30 s, 2 min and 10 min; after that a click on the placeholder restarts it. Failing or hanging background work is retried with back-off and does not fault the widget.
 
 Widgets render **inside** the bar's layout. They never get their own window. The built-in widgets are `ClockWidget` and `SystemResourcesWidget` (CPU and memory, sampled every 2 s while active).

@@ -53,6 +53,31 @@ public sealed class SettingsPersistenceTests : IDisposable
     }
 
     [Fact]
+    public void Widget_options_saved_as_strings_by_schema_1_still_load()
+    {
+        CreateService();
+        var store = new SqliteSettingsStore(DatabasePath);
+        store.Write("widgets", """[{"instanceId":"clock-1","typeId":"superbar.clock","enabled":true,"options":{"showSeconds":"true","TimeFormat":"TwentyFourHour"}}]""");
+
+        var loaded = CreateService().Current.Widgets.Single(w => w.InstanceId == "clock-1");
+        var typed = SuperBar.Widgets.WidgetSettingsBinder.Bind<SuperBar.Widgets.BuiltIn.ClockSettings>(loaded.Options);
+
+        Assert.True(typed.ShowSeconds);
+        Assert.Equal(SuperBar.Widgets.BuiltIn.ClockTimeFormat.TwentyFourHour, typed.TimeFormat);
+        Assert.True(typed.ShowDate); // missing: default
+    }
+
+    [Fact]
+    public void Widget_options_are_saved_as_typed_json()
+    {
+        CreateService().Update(s => s.Widgets[0].Options["showSeconds"] = true);
+
+        var row = new SqliteSettingsStore(DatabasePath).Read("widgets")!;
+
+        Assert.Contains("\"showSeconds\":true", row);
+    }
+
+    [Fact]
     public void Updates_persist_across_instances()
     {
         CreateService().Update(s =>

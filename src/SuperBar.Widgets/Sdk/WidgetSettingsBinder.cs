@@ -8,11 +8,14 @@ using Microsoft.Extensions.Logging;
 namespace SuperBar.Widgets;
 
 /// <summary>
-/// Turns a widget instance's persisted JSON object into its typed settings class.
-/// Binding is per property and forgiving: a missing key keeps the property's default, and a value that cannot
+/// Converts between a widget instance's persisted JSON object and its typed settings class.
+/// <para>
+/// Reading is per property and forgiving: a missing key keeps the property's default, and a value that cannot
 /// be converted keeps the default for that property only (and is logged) — a bad value never throws and never
 /// resets the other settings. Values stored as strings by the first settings format
 /// (<c>"true"</c>, <c>"25"</c>, <c>"Compact"</c>) are converted to the property's type.
+/// </para>
+/// <para>Writing produces typed JSON with camelCase keys and enum names.</para>
 /// </summary>
 public static class WidgetSettingsBinder
 {
@@ -23,18 +26,29 @@ public static class WidgetSettingsBinder
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public static TSettings Bind<TSettings>(JsonObject? source, ILogger? logger = null)
-        where TSettings : class, new()
+    private static readonly JsonSerializerOptions Writing = new()
     {
-        var settings = new TSettings();
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
+    public static TSettings Bind<TSettings>(JsonObject? source, ILogger? logger = null)
+        where TSettings : class, new() =>
+        (TSettings)Bind(typeof(TSettings), source, logger);
+
+    public static object Bind(Type settingsType, JsonObject? source, ILogger? logger = null)
+    {
+        ArgumentNullException.ThrowIfNull(settingsType);
+        var settings = Activator.CreateInstance(settingsType)
+            ?? throw new InvalidOperationException($"{settingsType.FullName} needs a public parameterless constructor.");
         if (source is null || source.Count == 0)
         {
             return settings;
         }
 
-        foreach (var property in typeof(TSettings).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var property in WritableProperties(settingsType))
         {
-            if (property.GetSetMethod() is null || property.GetIndexParameters().Length > 0 || !TryFind(source, property.Name, out var node) || node is null)
+            if (!TryFind(source, property.Name, out var node) || node is null)
             {
                 continue;
             }
@@ -47,16 +61,53 @@ public static class WidgetSettingsBinder
             {
                 logger?.LogWarning(
                     "Ignoring setting {Setting} of {SettingsType}: {Value} is not a valid {PropertyType}",
-                    property.Name, typeof(TSettings).Name, node.ToJsonString(), property.PropertyType.Name);
+                    property.Name, settingsType.Name, node.ToJsonString(), property.PropertyType.Name);
             }
         }
 
         return settings;
     }
 
-    private static bool TryFind(JsonObject source, string name, out JsonNode? node)
+    /// <summary>The JSON form of <paramref name="settings"/>: one typed value per public read-write property.</summary>
+    public static JsonObject ToJson(object settings)
     {
-        if (source.TryGetPropertyValue(name, out node))
+        ArgumentNullException.ThrowIfNull(settings);
+        var json = new JsonObject();
+        foreach (var property in WritableProperties(settings.GetType()))
+        {
+            json[KeyOf(property.Name)] = ToNode(property.GetValue(settings), property.PropertyType);
+        }
+
+        return json;
+    }
+
+    /// <summary>A deep copy, made through the JSON form.</summary>
+    public static TSettings Clone<TSettings>(TSettings settings)
+        where TSettings : class, new() =>
+        Bind<TSettings>(ToJson(settings));
+
+    /// <summary>The key a property is stored under (camelCase).</summary>
+    public static string KeyOf(string propertyName) => JsonNamingPolicy.CamelCase.ConvertName(propertyName);
+
+    /// <summary>The typed JSON form of one value.</summary>
+    public static JsonNode? ToNode(object? value, Type type) => JsonSerializer.SerializeToNode(value, type, Writing);
+
+    /// <summary>Reads one value as <paramref name="type"/> with the same leniency as <see cref="Bind"/>.</summary>
+    public static bool TryRead(JsonNode? node, Type type, out object? value)
+    {
+        if (node is null)
+        {
+            value = null;
+            return false;
+        }
+
+        return TryConvert(node, type, out value);
+    }
+
+    /// <summary>Finds <paramref name="name"/> exactly, else ignoring case (older rows used PascalCase keys).</summary>
+    internal static bool TryFind(JsonObject source, string name, out JsonNode? node)
+    {
+        if (source.TryGetPropertyValue(name, out node) || source.TryGetPropertyValue(KeyOf(name), out node))
         {
             return true;
         }
@@ -73,6 +124,10 @@ public static class WidgetSettingsBinder
         node = null;
         return false;
     }
+
+    private static IEnumerable<PropertyInfo> WritableProperties(Type type) =>
+        type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetSetMethod() is not null && p.GetGetMethod() is not null && p.GetIndexParameters().Length == 0);
 
     private static bool TryConvert(JsonNode node, Type type, out object? value)
     {
@@ -155,6 +210,11 @@ public static class WidgetSettingsBinder
         try
         {
             value = node.Deserialize(type, Lenient);
+            if (value is not null && (Nullable.GetUnderlyingType(type) ?? type) is { IsEnum: true } enumType && !Enum.IsDefined(enumType, value))
+            {
+                value = null; // a number outside the enum
+            }
+
             return value is not null;
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException or InvalidOperationException or FormatException or OverflowException)
@@ -162,5 +222,38 @@ public static class WidgetSettingsBinder
             value = null;
             return false;
         }
+    }
+}
+
+/// <summary>Edits a widget instance's options object.</summary>
+public static class WidgetOptions
+{
+    /// <summary>
+    /// A copy of <paramref name="current"/> with every value of <paramref name="changes"/> written over it. Keys
+    /// that only differ in case are replaced too, and keys the changes do not mention are kept (for example
+    /// settings written by a newer version).
+    /// </summary>
+    public static JsonObject Merge(JsonObject? current, JsonObject changes)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+        var merged = current is null ? new JsonObject() : (JsonObject)current.DeepClone();
+        foreach (var (key, value) in changes)
+        {
+            Set(merged, key, value?.DeepClone());
+        }
+
+        return merged;
+    }
+
+    /// <summary>Sets <paramref name="key"/>, removing any differently-cased spelling of it first.</summary>
+    public static void Set(JsonObject options, string key, JsonNode? value)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        foreach (var existing in options.Select(p => p.Key).Where(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            options.Remove(existing);
+        }
+
+        options[key] = value;
     }
 }

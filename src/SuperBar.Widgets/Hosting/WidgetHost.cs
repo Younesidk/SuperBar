@@ -70,8 +70,12 @@ public sealed class WidgetHost : IDisposable
     private int _generation;
     private int _automaticRestarts;
     private long _lastFaultAt;
+    private readonly IWidgetStateStore _state;
     private bool _wantActive;
-    private bool _settingsDirty;
+
+    // The options the live widget currently has (loaded, applied or saved by itself). Incoming settings are compared
+    // with this, so a widget's own save does not come back to it as a change.
+    private JsonObject? _delivered;
 
     public WidgetHost(WidgetDescriptor descriptor, WidgetInstanceSettings settings, IServiceProvider services, ILoggerFactory loggerFactory)
     {
@@ -80,6 +84,11 @@ public sealed class WidgetHost : IDisposable
         _services = services;
         _dispatcher = services.GetRequiredService<IUiDispatcher>();
         _logger = loggerFactory.CreateLogger($"SuperBar.Widget.{descriptor.TypeId}");
+
+        // Survives restarts of a faulted widget: state belongs to the instance, not to one widget object.
+        _state = services.GetService<ISettingsStore>() is { } store
+            ? new SettingsStoreWidgetState(store, settings.InstanceId, _logger)
+            : new InMemoryWidgetStateStore();
     }
 
     /// <summary>Raised on the UI thread whenever <see cref="State"/> changes (and with it, possibly, <see cref="View"/>).</summary>
@@ -140,21 +149,12 @@ public sealed class WidgetHost : IDisposable
     /// <summary>Applies changed instance settings (width, options) without recreating the widget.</summary>
     public void Apply(WidgetInstanceSettings settings)
     {
-        var optionsChanged = !OptionsEqual(_settings.Options, settings.Options);
         _settings = settings;
-        if (!optionsChanged)
-        {
-            return;
-        }
 
-        switch (State)
+        // While initializing, the change is delivered right after initialization (see OnInitialized).
+        if (State is WidgetState.Ready or WidgetState.Active && OptionsChanged())
         {
-            case WidgetState.Initializing:
-                _settingsDirty = true; // delivered right after initialization
-                break;
-            case WidgetState.Ready or WidgetState.Active:
-                ApplySettingsNow();
-                break;
+            ApplySettingsNow();
         }
     }
 
@@ -205,14 +205,25 @@ public sealed class WidgetHost : IDisposable
         }
 
         var generation = ++_generation;
-        var context = new WidgetContext(InstanceId, _logger, (action, operation) =>
-        {
-            // Callbacks of a widget that has since been replaced or disposed are dropped.
-            if (generation == _generation && _widget is not null)
+        var context = new WidgetContext(
+            InstanceId,
+            _logger,
+            _state,
+            (action, operation) =>
             {
-                Guard(action, operation);
-            }
-        });
+                // Callbacks of a widget that has since been replaced or disposed are dropped.
+                if (generation == _generation && _widget is not null)
+                {
+                    Guard(action, operation);
+                }
+            },
+            values =>
+            {
+                if (generation == _generation && _widget is not null)
+                {
+                    SaveOptions(values);
+                }
+            });
 
         IWidget widget;
         try
@@ -226,13 +237,13 @@ public sealed class WidgetHost : IDisposable
         }
 
         _widget = widget;
-        _settingsDirty = false;
         try
         {
             _viewModel = widget.ViewModel ?? throw new InvalidOperationException("The widget has no view model.");
 
             // Silent: the widget starts with its settings, it is not told they "changed".
-            widget.LoadSettings(ToJson(_settings.Options));
+            _delivered = Snapshot(_settings.Options);
+            widget.LoadSettings(Snapshot(_settings.Options));
         }
         catch (Exception ex)
         {
@@ -311,7 +322,7 @@ public sealed class WidgetHost : IDisposable
 
         _initCts = null;
         SetState(WidgetState.Ready);
-        if (State == WidgetState.Ready && _settingsDirty)
+        if (State == WidgetState.Ready && OptionsChanged())
         {
             ApplySettingsNow();
         }
@@ -349,10 +360,51 @@ public sealed class WidgetHost : IDisposable
 
     private void ApplySettingsNow()
     {
-        _settingsDirty = false;
         var widget = _widget!;
-        var settings = ToJson(_settings.Options);
+        _delivered = Snapshot(_settings.Options);
+        var settings = Snapshot(_settings.Options);
         Guard(() => widget.ApplySettings(settings), "apply settings");
+    }
+
+    private bool OptionsChanged() => !JsonNode.DeepEquals(_delivered, _settings.Options);
+
+    /// <summary>
+    /// A settings save made by the widget itself (<c>SaveSettings</c>): merged into this instance's options and
+    /// persisted. The widget already has these values, so the resulting settings change is not delivered back.
+    /// </summary>
+    private void SaveOptions(JsonObject values)
+    {
+        var merged = WidgetOptions.Merge(_settings.Options, values);
+        _delivered = Snapshot(merged);
+        _settings = new WidgetInstanceSettings
+        {
+            InstanceId = _settings.InstanceId,
+            TypeId = _settings.TypeId,
+            Enabled = _settings.Enabled,
+            Width = _settings.Width,
+            Options = merged,
+        };
+
+        if (_services.GetService<ISettingsService>() is not { } settingsService)
+        {
+            return;
+        }
+
+        try
+        {
+            settingsService.Update(s =>
+            {
+                if (s.Widgets.FirstOrDefault(w => w.InstanceId == InstanceId) is { } instance)
+                {
+                    instance.Options = Snapshot(merged);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            // Not the widget's fault: it keeps running with the new values, they are just not on disk.
+            _logger.LogError(ex, "Could not save the settings of widget {InstanceId}", InstanceId);
+        }
     }
 
     /// <summary>Runs widget code on the UI thread. An exception faults the widget instead of propagating.</summary>
@@ -493,20 +545,8 @@ public sealed class WidgetHost : IDisposable
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    // The settings store still keeps widget options as strings; WidgetSettingsBinder converts them to typed values.
-    private static JsonObject ToJson(IReadOnlyDictionary<string, string> options)
-    {
-        var json = new JsonObject();
-        foreach (var (key, value) in options)
-        {
-            json[key] = value;
-        }
-
-        return json;
-    }
-
-    private static bool OptionsEqual(IReadOnlyDictionary<string, string> a, IReadOnlyDictionary<string, string> b) =>
-        a.Count == b.Count && a.All(kv => b.TryGetValue(kv.Key, out var v) && v == kv.Value);
+    // Settings snapshots are shared and immutable, and a JSON node can only have one parent: widgets get copies.
+    private static JsonObject Snapshot(JsonObject? options) => options is null ? new JsonObject() : (JsonObject)options.DeepClone();
 }
 
 /// <summary>

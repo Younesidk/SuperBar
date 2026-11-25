@@ -102,3 +102,23 @@ public sealed partial class ControlCenterPageTemplateSelector : DataTemplateSele
 
     protected override DataTemplate? SelectTemplateCore(object item, DependencyObject container) => SelectTemplateCore(item);
 }
+
+/// <summary>Picks the editor template of each generated settings field.</summary>
+public sealed partial class SettingFieldTemplateSelector : DataTemplateSelector
+{
+    public DataTemplate? Toggle { get; set; }
+    public DataTemplate? Choice { get; set; }
+    public DataTemplate? Number { get; set; }
+    public DataTemplate? Text { get; set; }
+
+    protected override DataTemplate? SelectTemplateCore(object item) => item switch
+    {
+        ToggleSettingViewModel => Toggle,
+        ChoiceSettingViewModel => Choice,
+        NumberSettingViewModel => Number,
+        TextSettingViewModel => Text,
+        _ => null,
+    };
+
+    protected override DataTemplate? SelectTemplateCore(object item, DependencyObject container) => SelectTemplateCore(item);
+}

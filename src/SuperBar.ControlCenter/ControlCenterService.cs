@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using SuperBar.ControlCenter.ViewModels;
+using SuperBar.ControlCenter.Widgets;
 using SuperBar.ControlCenter.Views;
 using SuperBar.Core.Runtime;
 using SuperBar.Core.Settings;
@@ -26,6 +27,8 @@ public sealed class ControlCenterService(IServiceProvider services, IUiDispatche
             services.GetRequiredService<ISettingsService>(),
             services.GetRequiredService<ITaskbarRuntimeController>(),
             services.GetRequiredService<IWidgetRegistry>(),
+            services.GetRequiredService<IWidgetSettingsEditors>(),
+            services.GetRequiredService<ISettingsStore>(),
             services.GetRequiredService<IAppPaths>(),
             services.GetRequiredService<IAppLauncher>(),
             services.GetRequiredService<IIconProvider>(),
@@ -49,6 +52,10 @@ public static class ControlCenterServiceCollectionExtensions
     public static IServiceCollection AddSuperBarControlCenter(this IServiceCollection services)
     {
         services.AddSingleton<IControlCenterLauncher, ControlCenterService>();
+
+        // Custom widget settings editors are discovered by their [WidgetSettingsViewFor] attribute.
+        services.AddSingleton<IWidgetSettingsEditors, WidgetSettingsEditors>();
+        services.AddWidgetSettingsViewsFrom(typeof(ControlCenterService).Assembly);
         return services;
     }
 }
