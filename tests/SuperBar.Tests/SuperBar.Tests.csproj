@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SuperBar.Core\SuperBar.Core.csproj" />
+    <ProjectReference Include="..\..\src\SuperBar.Infrastructure\SuperBar.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\SuperBar.Windows\SuperBar.Windows.csproj" />
+    <ProjectReference Include="..\..\src\SuperBar.Widgets\SuperBar.Widgets.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

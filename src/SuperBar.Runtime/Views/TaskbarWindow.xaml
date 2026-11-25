@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window x:Class="SuperBar.Runtime.Views.TaskbarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:SuperBar.Runtime.ViewModels"
+        xmlns:views="using:SuperBar.Runtime.Views"
+        Title="SuperBar Taskbar">
+
+  <!--
+    Brushes (SB.*) and the observable metrics object (SB.Theme) are published to Application.Resources by
+    TaskbarTheme before this window loads. Brush instances never change - only their colors - so StaticResource
+    references stay live; metrics are bound with {Binding X, Source={StaticResource SB.Theme}}.
+  -->
+  <Border x:Name="Root"
+          Background="{StaticResource SB.Surface}"
+          BorderBrush="{StaticResource SB.SurfaceBorder}"
+          BorderThickness="0,1,0,0"
+          Padding="{Binding SurfacePadding, Source={StaticResource SB.Theme}}">
+    <Border.Resources>
+      <!-- Every interactive item on the bar: hover / pressed backgrounds and a 0.94 press scale. -->
+      <Style x:Key="SbItemButton" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource SB.Transparent}" />
+        <Setter Property="Foreground" Value="{StaticResource SB.Foreground}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Grid x:Name="RootGrid"
+                    Height="{Binding ItemSize, Source={StaticResource SB.Theme}}"
+                    Background="Transparent"
+                    RenderTransformOrigin="0.5,0.5">
+                <Grid.RenderTransform>
+                  <ScaleTransform x:Name="PressScale" ScaleX="1" ScaleY="1" />
+                </Grid.RenderTransform>
+                <VisualStateManager.VisualStateGroups>
+                  <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                      <VisualState.Setters>
+                        <Setter Target="Chrome.Background" Value="{StaticResource SB.Hover}" />
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                      <VisualState.Setters>
+                        <Setter Target="Chrome.Background" Value="{StaticResource SB.Pressed}" />
+                      </VisualState.Setters>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="0.94" Duration="0:0:0.08" />
+                        <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="0.94" Duration="0:0:0.08" />
+                      </Storyboard>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                      <VisualState.Setters>
+                        <Setter Target="RootGrid.Opacity" Value="0.4" />
+                      </VisualState.Setters>
+                    </VisualState>
+                  </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <Border x:Name="Chrome"
+                        Background="{TemplateBinding Background}"
+                        CornerRadius="{Binding ItemCornerRadius, Source={StaticResource SB.Theme}}" />
+                <ContentPresenter x:Name="ContentPresenter"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  Padding="{TemplateBinding Padding}"
+                                  Foreground="{TemplateBinding Foreground}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="SbWideButton" TargetType="Button" BasedOn="{StaticResource SbItemButton}">
+        <Setter Property="Padding" Value="10,0" />
+      </Style>
+      <Style x:Key="SbNarrowButton" TargetType="Button" BasedOn="{StaticResource SbItemButton}">
+        <Setter Property="Width" Value="28" />
+      </Style>
+
+      <Style x:Key="SbGlyph" TargetType="Path">
+        <Setter Property="Stroke" Value="{StaticResource SB.Foreground}" />
+        <Setter Property="StrokeThickness" Value="1.5" />
+        <Setter Property="StrokeStartLineCap" Value="Round" />
+        <Setter Property="StrokeEndLineCap" Value="Round" />
+        <Setter Property="StrokeLineJoin" Value="Round" />
+        <Setter Property="Stretch" Value="None" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+      </Style>
+
+      <Style x:Key="SbText" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource SB.Foreground}" />
+        <Setter Property="FontSize" Value="12" />
+      </Style>
+      <Style x:Key="SbSubtle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource SB.Subtle}" />
+        <Setter Property="FontSize" Value="11" />
+      </Style>
+
+      <!-- Start -->
+      <DataTemplate x:Key="StartTemplate" x:DataType="vm:StartSectionViewModel">
+        <Button Style="{StaticResource SbItemButton}"
+                Width="{Binding ItemSize, Source={StaticResource SB.Theme}}"
+                Command="{x:Bind OpenStartCommand}"
+                ToolTipService.ToolTip="Start"
+                AutomationProperties.Name="Start">
+          <Path Fill="{StaticResource SB.Accent}" Width="18" Height="18" Stretch="Uniform"
+                Data="M0,0 H8.5 V8.5 H0 Z M9.5,0 H18 V8.5 H9.5 Z M0,9.5 H8.5 V18 H0 Z M9.5,9.5 H18 V18 H9.5 Z" />
+        </Button>
+      </DataTemplate>
+
+      <!-- Pinned + running applications -->
+      <DataTemplate x:Key="AppsTemplate" x:DataType="vm:AppsSectionViewModel">
+        <ItemsControl ItemsSource="{x:Bind Apps}" IsTabStop="False">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="{Binding ItemSpacing, Source={StaticResource SB.Theme}}" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:AppButtonViewModel">
+              <Button Style="{StaticResource SbItemButton}"
+                      Width="{Binding ItemSize, Source={StaticResource SB.Theme}}"
+                      Background="{x:Bind views:TaskbarBrushes.ItemBackground(IsActive), Mode=OneWay}"
+                      Command="{x:Bind ClickCommand}"
+                      ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
+                      AutomationProperties.Name="{x:Bind DisplayName, Mode=OneWay}">
+                <Button.ContextFlyout>
+                  <MenuFlyout ShouldConstrainToRootBounds="False" Placement="Top">
+                    <MenuFlyoutItem Text="{x:Bind DisplayName, Mode=OneWay}" IsEnabled="False" />
+                    <MenuFlyoutItem Text="Open new window" Command="{x:Bind LaunchNewCommand}" />
+                  </MenuFlyout>
+                </Button.ContextFlyout>
+                <Grid Width="{Binding ItemSize, Source={StaticResource SB.Theme}}"
+                      Height="{Binding ItemSize, Source={StaticResource SB.Theme}}">
+                  <Image Source="{x:Bind Icon, Mode=OneWay}"
+                         Visibility="{x:Bind HasIcon, Mode=OneWay}"
+                         Width="{Binding IconSize, Source={StaticResource SB.Theme}}"
+                         Height="{Binding IconSize, Source={StaticResource SB.Theme}}"
+                         Stretch="Uniform"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  <TextBlock Text="{x:Bind Initial, Mode=OneWay}"
+                             Visibility="{x:Bind ShowInitial, Mode=OneWay}"
+                             Style="{StaticResource SbText}" FontSize="15"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  <views:RunningIndicator IsActive="{x:Bind IsActive, Mode=OneWay}"
+                                          Visibility="{x:Bind IsRunning, Mode=OneWay}"
+                                          ActiveBrush="{StaticResource SB.Accent}"
+                                          InactiveBrush="{StaticResource SB.Subtle}" />
+                </Grid>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </DataTemplate>
+
+      <!-- Hosted widget -->
+      <DataTemplate x:Key="WidgetTemplate" x:DataType="vm:WidgetSectionViewModel">
+        <Border Background="{StaticResource SB.WidgetBackground}"
+                CornerRadius="{Binding ItemCornerRadius, Source={StaticResource SB.Theme}}"
+                Height="{Binding ItemSize, Source={StaticResource SB.Theme}}"
+                Width="{x:Bind Width, Mode=OneWay}"
+                VerticalAlignment="Center">
+          <views:WidgetSlot Element="{x:Bind View, Mode=OneWay}" VerticalAlignment="Stretch" />
+        </Border>
+      </DataTemplate>
+
+      <!-- System section -->
+      <DataTemplate x:Key="SystemTrayTemplate" x:DataType="vm:SystemTraySectionViewModel">
+        <StackPanel Orientation="Horizontal" Spacing="2">
+          <Button Style="{StaticResource SbNarrowButton}" ToolTipService.ToolTip="{x:Bind OverflowToolTip}" Opacity="0.55"
+                  AutomationProperties.Name="Notification area">
+            <Path Style="{StaticResource SbGlyph}" Data="M1,7 L6,2 L11,7" />
+          </Button>
+          <Button Style="{StaticResource SbWideButton}" Command="{x:Bind OpenQuickSettingsCommand}"
+                  ToolTipService.ToolTip="Quick settings (network, volume)" AutomationProperties.Name="Quick settings">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <!-- network -->
+              <Path Style="{StaticResource SbGlyph}" Data="M1,6 C5,2 11,2 15,6 M3.5,8.5 C6.5,5.8 9.5,5.8 12.5,8.5 M6,11 C7.2,10 8.8,10 10,11 M8,13.2 L8,13.3" />
+              <!-- volume -->
+              <Path Style="{StaticResource SbGlyph}" Data="M1,5.5 H4 L8,2 V14 L4,10.5 H1 Z M11,5 C12.5,6.5 12.5,9.5 11,11 M13.2,3 C16,5.6 16,10.4 13.2,13" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </DataTemplate>
+
+      <!-- Clock -->
+      <DataTemplate x:Key="ClockTemplate" x:DataType="vm:ClockSectionViewModel">
+        <Button Style="{StaticResource SbWideButton}" Command="{x:Bind OpenNotificationCenterCommand}"
+                ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}" AutomationProperties.Name="Clock">
+          <StackPanel VerticalAlignment="Center" Spacing="0">
+            <TextBlock Style="{StaticResource SbText}" Text="{x:Bind Time, Mode=OneWay}" HorizontalAlignment="Right" FontWeight="SemiBold" />
+            <TextBlock Style="{StaticResource SbSubtle}" Text="{x:Bind Date, Mode=OneWay}" HorizontalAlignment="Right" />
+          </StackPanel>
+        </Button>
+      </DataTemplate>
+
+      <views:SectionTemplateSelector x:Key="SectionTemplateSelector"
+                                     StartTemplate="{StaticResource StartTemplate}"
+                                     AppsTemplate="{StaticResource AppsTemplate}"
+                                     WidgetTemplate="{StaticResource WidgetTemplate}"
+                                     SystemTrayTemplate="{StaticResource SystemTrayTemplate}"
+                                     ClockTemplate="{StaticResource ClockTemplate}" />
+
+      <ItemsPanelTemplate x:Key="ZoneItemsPanel">
+        <StackPanel Orientation="Horizontal" Spacing="{Binding ItemSpacing, Source={StaticResource SB.Theme}}" />
+      </ItemsPanelTemplate>
+    </Border.Resources>
+
+    <Border.ContextFlyout>
+      <MenuFlyout ShouldConstrainToRootBounds="False">
+        <MenuFlyoutItem Text="SuperBar Control Center" Command="{x:Bind ViewModel.OpenControlCenterCommand}" />
+        <MenuFlyoutItem Text="Task Manager" Command="{x:Bind ViewModel.OpenTaskManagerCommand}" />
+        <MenuFlyoutSeparator />
+        <MenuFlyoutItem Text="Exit SuperBar (restore Windows taskbar)" Command="{x:Bind ViewModel.ExitCommand}" />
+      </MenuFlyout>
+    </Border.ContextFlyout>
+
+    <views:ZonePanel>
+      <ItemsControl views:ZonePanel.Zone="Left" ItemsSource="{x:Bind ViewModel.LeftSections}"
+                    ItemTemplateSelector="{StaticResource SectionTemplateSelector}"
+                    ItemsPanel="{StaticResource ZoneItemsPanel}"
+                    VerticalAlignment="Center" IsTabStop="False" />
+      <ItemsControl views:ZonePanel.Zone="Center" ItemsSource="{x:Bind ViewModel.CenterSections}"
+                    ItemTemplateSelector="{StaticResource SectionTemplateSelector}"
+                    ItemsPanel="{StaticResource ZoneItemsPanel}"
+                    VerticalAlignment="Center" IsTabStop="False" />
+      <ItemsControl views:ZonePanel.Zone="Right" ItemsSource="{x:Bind ViewModel.RightSections}"
+                    ItemTemplateSelector="{StaticResource SectionTemplateSelector}"
+                    ItemsPanel="{StaticResource ZoneItemsPanel}"
+                    VerticalAlignment="Center" IsTabStop="False" />
+    </views:ZonePanel>
+  </Border>
+</Window>
