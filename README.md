@@ -119,7 +119,7 @@ Settings and state:
 
 Fault isolation: every call into a widget is guarded. A widget that throws (in a lifecycle method, a timer tick, a result handler or a command) is disposed and replaced by an error placeholder, then restarted after 30 s, 2 min and 10 min; after that a click on the placeholder restarts it. Failing or hanging background work is retried with back-off and does not fault the widget.
 
-Widgets render **inside** the bar's layout. They never get their own window. The built-in widgets are `ClockWidget` and `SystemResourcesWidget` (CPU and memory, sampled every 2 s while active).
+Widgets render **inside** the bar's layout. They never get their own window. The built-in widgets are `ClockWidget`, `SystemResourcesWidget` (CPU and memory, sampled every 2 s while active) and `MediaWidget` ("Now Playing": the current Windows media session, with Play/Pause and Next).
 
 ## Settings
 

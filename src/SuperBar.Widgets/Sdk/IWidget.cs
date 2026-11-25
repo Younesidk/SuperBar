@@ -84,6 +84,22 @@ public interface IWidgetScope
 
     /// <summary>Disposes <paramref name="subscription"/> (an OS hook, an event subscription, …) when the scope ends.</summary>
     void Own(IDisposable subscription);
+
+    /// <summary>
+    /// Subscribes to a service event for as long as the scope lives. <paramref name="handler"/> runs on the UI thread
+    /// (events raised elsewhere are marshalled) behind the fault guard, which a plain <c>+=</c> would bypass.
+    /// <code>scope.Listen&lt;MediaSnapshot&gt;(h => media.Changed += h, h => media.Changed -= h, Show);</code>
+    /// </summary>
+    void Listen<TArgs>(Action<EventHandler<TArgs>> subscribe, Action<EventHandler<TArgs>> unsubscribe, Action<TArgs> handler);
+}
+
+/// <summary>
+/// A presentation model that can collapse its widget's slot to nothing: no width, no card, no spacing on the bar.
+/// The widget stays active while collapsed, so it can come back by itself (for example when media starts playing).
+/// </summary>
+public interface ICollapsibleWidgetModel : System.ComponentModel.INotifyPropertyChanged
+{
+    bool IsCollapsed { get; }
 }
 
 /// <summary>What a widget instance receives when it is created.</summary>

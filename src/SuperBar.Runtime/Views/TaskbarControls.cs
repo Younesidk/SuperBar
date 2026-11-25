@@ -141,6 +141,45 @@ public sealed partial class RunningIndicator : Grid
 }
 
 /// <summary>
+/// Collapses a zone item completely: the template root and the items control's container around it, so the zone's
+/// panel adds no spacing for it either. Set on the root of an item template.
+/// </summary>
+public static class ZoneItem
+{
+    public static readonly DependencyProperty CollapsedProperty = DependencyProperty.RegisterAttached(
+        "Collapsed", typeof(bool), typeof(ZoneItem), new PropertyMetadata(false, OnCollapsedChanged));
+
+    public static bool GetCollapsed(DependencyObject element) => (bool)element.GetValue(CollapsedProperty);
+
+    public static void SetCollapsed(DependencyObject element, bool value) => element.SetValue(CollapsedProperty, value);
+
+    private static void OnCollapsedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not FrameworkElement element)
+        {
+            return;
+        }
+
+        // The container may not exist yet (or be replaced when the item moves): apply again once loaded.
+        element.Loaded -= OnLoaded;
+        element.Loaded += OnLoaded;
+        Apply(element);
+    }
+
+    private static void OnLoaded(object sender, RoutedEventArgs e) => Apply((FrameworkElement)sender);
+
+    private static void Apply(FrameworkElement element)
+    {
+        var visibility = GetCollapsed(element) ? Visibility.Collapsed : Visibility.Visible;
+        element.Visibility = visibility;
+        if (VisualTreeHelper.GetParent(element) is ContentPresenter container)
+        {
+            container.Visibility = visibility;
+        }
+    }
+}
+
+/// <summary>
 /// Hosts one widget's UI element in its taskbar slot. A UI element can only have one parent, and the zone
 /// item controls re-create their containers when sections move, so a new slot can receive an element that the
 /// old (unloading) slot still holds. Every slot therefore records which elements it hosts, and a slot adopting

@@ -131,6 +131,31 @@ internal sealed class WidgetScope : IWidgetScope, IDisposable
         _owned.Add(subscription);
     }
 
+    public void Listen<TArgs>(Action<EventHandler<TArgs>> subscribe, Action<EventHandler<TArgs>> unsubscribe, Action<TArgs> handler)
+    {
+        ArgumentNullException.ThrowIfNull(subscribe);
+        ArgumentNullException.ThrowIfNull(unsubscribe);
+        ArgumentNullException.ThrowIfNull(handler);
+        if (_disposed)
+        {
+            return;
+        }
+
+        EventHandler<TArgs> forward = (_, args) =>
+        {
+            if (_dispatcher.HasThreadAccess)
+            {
+                Invoke(() => handler(args), "event");
+            }
+            else
+            {
+                Post(() => handler(args), "event");
+            }
+        };
+        subscribe(forward);
+        _owned.Add(new Unsubscriber(() => unsubscribe(forward)));
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -304,4 +329,9 @@ internal sealed class WidgetScope : IWidgetScope, IDisposable
     }
 
     private readonly record struct WorkResult<T>(T? Value, Exception? Error, Task? Hung);
+
+    private sealed class Unsubscriber(Action unsubscribe) : IDisposable
+    {
+        public void Dispose() => unsubscribe();
+    }
 }

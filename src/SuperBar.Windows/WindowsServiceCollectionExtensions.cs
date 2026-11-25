@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using SuperBar.Core.Shell;
 using SuperBar.Windows.AppBar;
+using SuperBar.Windows.Media;
 using SuperBar.Windows.Apps;
 using SuperBar.Windows.Monitors;
 using SuperBar.Windows.Shell;
@@ -31,6 +32,9 @@ public static class WindowsServiceCollectionExtensions
         services.AddSingleton<IWindowThumbnailService, WindowThumbnailService>();
         services.AddSingleton<ICursorService, CursorService>();
         services.AddSingleton<ISystemMetricsProvider, SystemMetricsProvider>();
+
+        // Created on first use (by the Now Playing widget), on the UI thread.
+        services.AddSingleton<IMediaSessionService, GsmtcMediaSessionService>();
         return services;
     }
 

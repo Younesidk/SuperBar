@@ -42,6 +42,7 @@ public sealed class WidgetSectionViewModel : SectionViewModel, IDisposable
     private double _width;
     private object? _source;
     private UIElement? _view;
+    private ICollapsibleWidgetModel? _collapsible;
     private bool _disposed;
 
     public WidgetSectionViewModel(string id, WidgetHost host, WidgetViewResolver views, TaskbarTheme theme)
@@ -72,11 +73,15 @@ public sealed class WidgetSectionViewModel : SectionViewModel, IDisposable
                 ReleaseView();
                 _source = source;
                 _view = _views.Resolve(source);
+                Track(source as ICollapsibleWidgetModel);
             }
 
             return _view;
         }
     }
+
+    /// <summary>The widget's model collapsed its slot (see <see cref="ICollapsibleWidgetModel"/>); the bar then gives it no room at all.</summary>
+    public bool IsCollapsed => _collapsible?.IsCollapsed ?? false;
 
     /// <summary>The element currently shown in the slot (what a flyout is anchored to), or null before the first render.</summary>
     public FrameworkElement? CurrentElement => _view as FrameworkElement;
@@ -114,6 +119,40 @@ public sealed class WidgetSectionViewModel : SectionViewModel, IDisposable
         Host.StateChanged -= OnHostStateChanged;
         Host.Dispose();
         ReleaseView();
+        Track(null);
+    }
+
+    private void Track(ICollapsibleWidgetModel? model)
+    {
+        if (ReferenceEquals(model, _collapsible))
+        {
+            return;
+        }
+
+        var was = IsCollapsed;
+        if (_collapsible is not null)
+        {
+            _collapsible.PropertyChanged -= OnModelChanged;
+        }
+
+        _collapsible = model;
+        if (model is not null)
+        {
+            model.PropertyChanged += OnModelChanged;
+        }
+
+        if (was != IsCollapsed)
+        {
+            OnPropertyChanged(nameof(IsCollapsed));
+        }
+    }
+
+    private void OnModelChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ICollapsibleWidgetModel.IsCollapsed) or null or "")
+        {
+            OnPropertyChanged(nameof(IsCollapsed));
+        }
     }
 
     private double SlotWidth() => IsAutoSized ? double.NaN : Host.Width;

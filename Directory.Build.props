@@ -1,8 +1,9 @@
 <Project>
   <PropertyGroup>
     <!--
-      Pure projects (Core, Infrastructure, Windows, Widgets, Tests) target plain net11.0-windows: no WinRT projection
-      and no UI framework, so they stay headless-testable. The WinUI 3 projects (App, Runtime, ControlCenter) import
+      Pure projects (Core, Infrastructure, Widgets) target plain net11.0-windows: no WinRT projection and no UI
+      framework, so they stay headless-testable. SuperBar.Windows (and so the tests) add the WinRT projection for
+      Windows.Media.Control, still without a UI framework. The WinUI 3 projects (App, Runtime, ControlCenter) import
       build/SuperBar.WinUI.props, which retargets them to net11.0-windows10.0.19041.0 with the Windows App SDK.
     -->
     <TargetFramework>net11.0-windows</TargetFramework>
