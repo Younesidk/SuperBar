@@ -17,10 +17,11 @@ internal sealed class WindowChrome(ILogger<WindowChrome> logger) : IWindowChrome
     private readonly HashSet<nint> _subclassed = new();
 
     /// <summary>
-    /// Raised on the UI thread while a mouse-down is activating one of SuperBar's surfaces, i.e. before the shell
-    /// flyout that click is about to light-dismiss (Start, tray overflow) has closed. Handlers must not throw.
+    /// Raised on the UI thread when one of SuperBar's surfaces becomes the active window, which for a mouse click
+    /// happens before the click reaches any button and before the shell flyout it light-dismisses (Start, tray
+    /// overflow, Quick Settings...) has finished closing. Handlers must not throw.
     /// </summary>
-    internal static event Action? SurfaceClickActivating;
+    internal static event Action? SurfaceActivated;
 
     public void ApplyShellSurfaceStyle(nint windowHandle)
     {
@@ -104,9 +105,8 @@ internal sealed class WindowChrome(ILogger<WindowChrome> logger) : IWindowChrome
                 return result;
             }
 
-            case WM_MOUSEACTIVATE:
-            case WM_ACTIVATE when ((int)wParam & 0xFFFF) == WA_CLICKACTIVE:
-                SurfaceClickActivating?.Invoke();
+            case WM_ACTIVATE when ((int)wParam & 0xFFFF) != WA_INACTIVE:
+                SurfaceActivated?.Invoke();
                 break;
 
             case WM_NCDESTROY:

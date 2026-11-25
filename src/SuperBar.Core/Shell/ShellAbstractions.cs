@@ -158,8 +158,11 @@ public interface IShellCommands
 
     /// <summary>Opens or closes Explorer's "hidden icons" notification-area flyout next to the bar.</summary>
     void ToggleTrayOverflow();
-    void OpenNotificationCenter();
-    void OpenQuickSettings();
+    /// <summary>Opens or closes the Windows notification center / calendar flyout.</summary>
+    void ToggleNotificationCenter();
+
+    /// <summary>Opens or closes the Windows Quick Settings flyout.</summary>
+    void ToggleQuickSettings();
     void OpenTaskManager();
 }
 

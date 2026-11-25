@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
@@ -38,6 +41,8 @@ public sealed partial class TaskbarWindow : Window
         // Tool window (no Alt+Tab / Win+Tab), no frame, no DWM rounded corners or outline, no minimum-height clamp.
         chrome.ApplyShellSurfaceStyle(Handle);
 
+        Root.ContextRequested += OnBarContextRequested;
+
         AppWindow.Closing += (_, args) => args.Cancel = !AllowClose;
 
         // The acrylic must stay on while the bar is inactive (which is almost always).
@@ -66,6 +71,47 @@ public sealed partial class TaskbarWindow : Window
         {
             SystemBackdrop = wanted;
         }
+    }
+
+    // Context menus are built per request instead of being declared once in XAML: a MenuFlyout that has been shown
+    // stops reacting to mouse clicks on its items (keyboard still works) once another SuperBar window, i.e. the
+    // Control Center, has been active. A fresh flyout is not affected.
+
+    private void OnBarContextRequested(UIElement sender, ContextRequestedEventArgs args)
+    {
+        var menu = new MenuFlyout { ShouldConstrainToRootBounds = false };
+        menu.Items.Add(new MenuFlyoutItem { Text = "SuperBar Control Center", Command = ViewModel.OpenControlCenterCommand });
+        menu.Items.Add(new MenuFlyoutItem { Text = "Task Manager", Command = ViewModel.OpenTaskManagerCommand });
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(new MenuFlyoutItem { Text = "Exit SuperBar (restore Windows taskbar)", Command = ViewModel.ExitCommand });
+        ShowContextMenu(menu, Root, args);
+    }
+
+    private void OnAppContextRequested(UIElement sender, ContextRequestedEventArgs args)
+    {
+        if (sender is not FrameworkElement { DataContext: AppButtonViewModel app } button)
+        {
+            return;
+        }
+
+        var menu = new MenuFlyout { ShouldConstrainToRootBounds = false, Placement = FlyoutPlacementMode.Top };
+        menu.Items.Add(new MenuFlyoutItem { Text = app.DisplayName, IsEnabled = false });
+        menu.Items.Add(new MenuFlyoutItem { Text = "Open new window", Command = app.LaunchNewCommand });
+        ShowContextMenu(menu, button, args);
+    }
+
+    private static void ShowContextMenu(MenuFlyout menu, FrameworkElement target, ContextRequestedEventArgs args)
+    {
+        if (args.TryGetPosition(target, out var point))
+        {
+            menu.ShowAt(target, new FlyoutShowOptions { Position = point, Placement = menu.Placement });
+        }
+        else
+        {
+            menu.ShowAt(target);
+        }
+
+        args.Handled = true;
     }
 
     private void ConfigureAppWindow()

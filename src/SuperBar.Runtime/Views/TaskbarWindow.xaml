@@ -130,13 +130,8 @@
                       Background="{x:Bind views:TaskbarBrushes.ItemBackground(IsActive), Mode=OneWay}"
                       Command="{x:Bind ClickCommand}"
                       ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
+                      ContextRequested="OnAppContextRequested"
                       AutomationProperties.Name="{x:Bind DisplayName, Mode=OneWay}">
-                <Button.ContextFlyout>
-                  <MenuFlyout ShouldConstrainToRootBounds="False" Placement="Top">
-                    <MenuFlyoutItem Text="{x:Bind DisplayName, Mode=OneWay}" IsEnabled="False" />
-                    <MenuFlyoutItem Text="Open new window" Command="{x:Bind LaunchNewCommand}" />
-                  </MenuFlyout>
-                </Button.ContextFlyout>
                 <Grid Width="{Binding ItemSize, Source={StaticResource SB.Theme}}"
                       Height="{Binding ItemSize, Source={StaticResource SB.Theme}}">
                   <Image Source="{x:Bind Icon, Mode=OneWay}"
@@ -174,12 +169,12 @@
       <!-- System section -->
       <DataTemplate x:Key="SystemTrayTemplate" x:DataType="vm:SystemTraySectionViewModel">
         <StackPanel Orientation="Horizontal" Spacing="2">
-          <!-- Both shell-flyout buttons act on press: see ShellCommands for why the timing matters. -->
+          <!-- Shell-flyout buttons act on press: see ShellCommands for why the timing matters. -->
           <Button Style="{StaticResource SbNarrowButton}" Command="{x:Bind ToggleOverflowCommand}" ClickMode="Press"
                   ToolTipService.ToolTip="Show hidden icons" AutomationProperties.Name="Show hidden icons">
             <Path Style="{StaticResource SbGlyph}" Data="M1,7 L6,2 L11,7" />
           </Button>
-          <Button Style="{StaticResource SbWideButton}" Command="{x:Bind OpenQuickSettingsCommand}"
+          <Button Style="{StaticResource SbWideButton}" Command="{x:Bind ToggleQuickSettingsCommand}" ClickMode="Press"
                   ToolTipService.ToolTip="Quick settings (network, volume)" AutomationProperties.Name="Quick settings">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <!-- network -->
@@ -193,7 +188,7 @@
 
       <!-- Clock -->
       <DataTemplate x:Key="ClockTemplate" x:DataType="vm:ClockSectionViewModel">
-        <Button Style="{StaticResource SbWideButton}" Command="{x:Bind OpenNotificationCenterCommand}"
+        <Button Style="{StaticResource SbWideButton}" Command="{x:Bind ToggleNotificationCenterCommand}" ClickMode="Press"
                 ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}" AutomationProperties.Name="Clock">
           <StackPanel VerticalAlignment="Center" Spacing="0">
             <TextBlock Style="{StaticResource SbText}" Text="{x:Bind Time, Mode=OneWay}" HorizontalAlignment="Right" FontWeight="SemiBold" />
@@ -213,15 +208,6 @@
         <StackPanel Orientation="Horizontal" Spacing="{Binding ItemSpacing, Source={StaticResource SB.Theme}}" />
       </ItemsPanelTemplate>
     </Border.Resources>
-
-    <Border.ContextFlyout>
-      <MenuFlyout ShouldConstrainToRootBounds="False">
-        <MenuFlyoutItem Text="SuperBar Control Center" Command="{x:Bind ViewModel.OpenControlCenterCommand}" />
-        <MenuFlyoutItem Text="Task Manager" Command="{x:Bind ViewModel.OpenTaskManagerCommand}" />
-        <MenuFlyoutSeparator />
-        <MenuFlyoutItem Text="Exit SuperBar (restore Windows taskbar)" Command="{x:Bind ViewModel.ExitCommand}" />
-      </MenuFlyout>
-    </Border.ContextFlyout>
 
     <views:ZonePanel>
       <ItemsControl views:ZonePanel.Zone="Left" ItemsSource="{x:Bind ViewModel.LeftSections}"

@@ -95,7 +95,7 @@ public sealed class WidgetSectionViewModel(string id, WidgetHost host, WidgetVie
 /// </summary>
 public sealed class SystemTraySectionViewModel(string id, IShellCommands shell) : SectionViewModel(id)
 {
-    public ICommand OpenQuickSettingsCommand { get; } = new RelayCommand(shell.OpenQuickSettings);
+    public ICommand ToggleQuickSettingsCommand { get; } = new RelayCommand(shell.ToggleQuickSettings);
 
     public ICommand ToggleOverflowCommand { get; } = new RelayCommand(shell.ToggleTrayOverflow);
 }
@@ -109,12 +109,12 @@ public sealed class ClockSectionViewModel : SectionViewModel, IDisposable
 
     public ClockSectionViewModel(string id, IShellCommands shell, IUiDispatcher dispatcher) : base(id)
     {
-        OpenNotificationCenterCommand = new RelayCommand(shell.OpenNotificationCenter);
+        ToggleNotificationCenterCommand = new RelayCommand(shell.ToggleNotificationCenter);
         _timer = dispatcher.CreateTimer(TimeSpan.FromMinutes(1), Update);
         Update();
     }
 
-    public ICommand OpenNotificationCenterCommand { get; }
+    public ICommand ToggleNotificationCenterCommand { get; }
 
     public string Time
     {

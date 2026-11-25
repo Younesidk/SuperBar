@@ -220,8 +220,7 @@ internal static class NativeMethods
 
     // --- Window messages ---------------------------------------------------------------------
     public const uint WM_ACTIVATE = 0x0006;
-    public const uint WM_MOUSEACTIVATE = 0x0021;
-    public const int WA_CLICKACTIVE = 2;
+    public const int WA_INACTIVE = 0;
     public const uint WM_WINDOWPOSCHANGED = 0x0047;
     public const uint WM_DISPLAYCHANGE = 0x007E;
     public const uint WM_NCDESTROY = 0x0082;
@@ -298,8 +297,10 @@ internal static class NativeMethods
     public const uint MONITOR_DEFAULTTONEAREST = 2;
     public const int MDT_EFFECTIVE_DPI = 0;
     public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    public const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
     public const uint EVENT_OBJECT_SHOW = 0x8002;
     public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+    public const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
     public const uint MSGFLT_ALLOW = 1;
 
     public const uint INPUT_KEYBOARD = 1;

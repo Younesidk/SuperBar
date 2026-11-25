@@ -104,10 +104,7 @@ internal sealed class WindowTracker : IWindowTracker, IDisposable
             case HSHELL_RUDEAPPACTIVATED:
                 // Activation is also where previously cloaked windows (UWP) first become eligible.
                 TryAdd(hwnd, raise: false);
-                if (hwnd == 0 || IndexOf(hwnd) >= 0)
-                {
-                    ActiveWindow = hwnd;
-                }
+                ActiveWindow = ResolveActiveWindow(ActiveWindow, hwnd, IndexOf(hwnd) >= 0, GetForegroundWindow(), IsOwnWindow, IsIconic);
 
                 WindowsChanged?.Invoke(this, EventArgs.Empty);
                 break;
@@ -122,6 +119,40 @@ internal sealed class WindowTracker : IWindowTracker, IDisposable
                 WindowsChanged?.Invoke(this, EventArgs.Empty);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Decides which tracked window counts as active after the shell reports an activation.
+    /// The shell reports 0 for windows without a taskbar button, which includes SuperBar's own bar: clicking the
+    /// bar must not clear the active window, or an app button could never minimize the window it just showed.
+    /// </summary>
+    internal static nint ResolveActiveWindow(nint current, nint activated, bool activatedIsTracked, nint foreground, Func<nint, bool> isOwnWindow, Func<nint, bool> isMinimized)
+    {
+        if (activatedIsTracked)
+        {
+            return activated;
+        }
+
+        // Foreground 0 is a transient state while activation is still moving; treat it like our own surface.
+        var subject = activated != 0 ? activated : foreground;
+        if (subject == 0 || isOwnWindow(subject))
+        {
+            return current != 0 && isMinimized(current) ? 0 : current;
+        }
+
+        // Desktop, Start, another shell surface: nothing on the bar is active.
+        return 0;
+    }
+
+    private bool IsOwnWindow(nint hwnd)
+    {
+        if (_ignored.Contains(hwnd))
+        {
+            return true;
+        }
+
+        GetWindowThreadProcessId(hwnd, out var pid);
+        return pid == (uint)Environment.ProcessId;
     }
 
     private void Refresh(nint hwnd)
