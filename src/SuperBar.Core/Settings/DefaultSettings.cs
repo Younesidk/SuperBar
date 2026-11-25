@@ -3,6 +3,10 @@ namespace SuperBar.Core.Settings;
 public static class DefaultSettings
 {
     public const string SystemResourcesWidgetType = "superbar.system-resources";
+    public const string ClockWidgetType = "superbar.clock";
+
+    /// <summary>Instance id of the clock created by default and by the migration of the former clock section.</summary>
+    public const string ClockWidgetInstanceId = "clock-1";
 
     public static SuperBarSettings Create()
     {
@@ -12,16 +16,22 @@ public static class DefaultSettings
             TypeId = SystemResourcesWidgetType,
         };
 
+        var clock = new WidgetInstanceSettings
+        {
+            InstanceId = ClockWidgetInstanceId,
+            TypeId = ClockWidgetType,
+        };
+
         var settings = new SuperBarSettings
         {
-            Widgets = { resources },
+            Widgets = { resources, clock },
             Layout =
             {
                 new SectionPlacement { Id = "start", Kind = SectionKind.Start, Zone = TaskbarZone.Left },
                 new SectionPlacement { Id = "apps", Kind = SectionKind.Applications, Zone = TaskbarZone.Left },
                 new SectionPlacement { Id = "widget-resources", Kind = SectionKind.Widget, Zone = TaskbarZone.Right, WidgetInstanceId = resources.InstanceId },
                 new SectionPlacement { Id = "tray", Kind = SectionKind.SystemTray, Zone = TaskbarZone.Right },
-                new SectionPlacement { Id = "clock", Kind = SectionKind.Clock, Zone = TaskbarZone.Right },
+                new SectionPlacement { Id = "clock", Kind = SectionKind.Widget, Zone = TaskbarZone.Right, WidgetInstanceId = clock.InstanceId },
             },
         };
 

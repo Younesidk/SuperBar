@@ -297,7 +297,7 @@
                       <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsOn="{x:Bind Enabled, Mode=TwoWay}"
                                     AutomationProperties.Name="{x:Bind DisplayName}" />
                     </Grid>
-                    <Grid Margin="0,6,0,0">
+                    <Grid Margin="0,6,0,0" Visibility="{x:Bind CanResize}">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -306,7 +306,8 @@
                       <TextBlock Grid.Column="1" Style="{StaticResource Hint}" Text="{x:Bind WidthLabel, Mode=OneWay}" />
                     </Grid>
                     <Slider Minimum="{x:Bind MinWidth}" Maximum="{x:Bind MaxWidth}" StepFrequency="1"
-                            Value="{x:Bind Width, Mode=TwoWay}" AutomationProperties.Name="Slot width" />
+                            Value="{x:Bind Width, Mode=TwoWay}" AutomationProperties.Name="Slot width"
+                            Visibility="{x:Bind CanResize}" />
                   </StackPanel>
                 </Border>
               </DataTemplate>

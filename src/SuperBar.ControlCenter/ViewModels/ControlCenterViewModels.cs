@@ -347,7 +347,6 @@ public sealed class LayoutPageViewModel : PageViewModel
         SectionKind.Start => "Start button",
         SectionKind.Applications => "Applications (pinned and running)",
         SectionKind.SystemTray => "System tray",
-        SectionKind.Clock => "Clock and date",
         SectionKind.Widget => settings.Widgets.FirstOrDefault(w => w.InstanceId == s.WidgetInstanceId) is { } w && _widgets.TryGet(w.TypeId, out var d)
             ? $"Widget: {d.DisplayName}"
             : "Widget",
@@ -504,6 +503,9 @@ public sealed class WidgetItemViewModel : ObservableObject
     public string Description => Descriptor.Description;
     public double MinWidth => Descriptor.MinWidth;
     public double MaxWidth => Descriptor.MaxWidth;
+
+    /// <summary>Only fixed-size widgets have a slot width to choose; the others follow their content.</summary>
+    public bool CanResize => Descriptor.Sizing == WidgetSizing.Fixed;
 
     public bool Enabled
     {

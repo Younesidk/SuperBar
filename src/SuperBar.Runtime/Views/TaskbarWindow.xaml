@@ -167,10 +167,13 @@
 
       <!-- Hosted widget -->
       <DataTemplate x:Key="WidgetTemplate" x:DataType="vm:WidgetSectionViewModel">
-        <Border Background="{StaticResource SB.WidgetBackground}"
+        <!-- Fixed-size widgets bind Width; auto-size widgets leave it NaN and are clamped by MinWidth / MaxWidth. -->
+        <Border Background="{x:Bind Background}"
                 CornerRadius="{Binding ItemCornerRadius, Source={StaticResource SB.Theme}}"
                 Height="{Binding ItemSize, Source={StaticResource SB.Theme}}"
                 Width="{x:Bind Width, Mode=OneWay}"
+                MinWidth="{x:Bind MinWidth}"
+                MaxWidth="{x:Bind MaxWidth}"
                 VerticalAlignment="Center">
           <views:WidgetSlot Element="{x:Bind View, Mode=OneWay}" VerticalAlignment="Stretch" />
         </Border>
@@ -196,23 +199,11 @@
         </StackPanel>
       </DataTemplate>
 
-      <!-- Clock -->
-      <DataTemplate x:Key="ClockTemplate" x:DataType="vm:ClockSectionViewModel">
-        <Button Style="{StaticResource SbWideButton}" Command="{x:Bind ToggleNotificationCenterCommand}" ClickMode="Press"
-                ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}" AutomationProperties.Name="Clock">
-          <StackPanel VerticalAlignment="Center" Spacing="0">
-            <TextBlock Style="{StaticResource SbText}" Text="{x:Bind Time, Mode=OneWay}" HorizontalAlignment="Right" FontWeight="SemiBold" />
-            <TextBlock Style="{StaticResource SbSubtle}" Text="{x:Bind Date, Mode=OneWay}" HorizontalAlignment="Right" />
-          </StackPanel>
-        </Button>
-      </DataTemplate>
-
       <views:SectionTemplateSelector x:Key="SectionTemplateSelector"
                                      StartTemplate="{StaticResource StartTemplate}"
                                      AppsTemplate="{StaticResource AppsTemplate}"
                                      WidgetTemplate="{StaticResource WidgetTemplate}"
-                                     SystemTrayTemplate="{StaticResource SystemTrayTemplate}"
-                                     ClockTemplate="{StaticResource ClockTemplate}" />
+                                     SystemTrayTemplate="{StaticResource SystemTrayTemplate}" />
 
       <ItemsPanelTemplate x:Key="ZoneItemsPanel">
         <StackPanel Orientation="Horizontal" Spacing="{Binding ItemSpacing, Source={StaticResource SB.Theme}}" />

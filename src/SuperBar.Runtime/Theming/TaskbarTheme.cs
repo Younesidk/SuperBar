@@ -20,6 +20,9 @@ public sealed class TaskbarTheme : ObservableObject
 {
     public const string ResourceKey = "SB.Theme";
 
+    /// <summary>Key of the bar's padded item button style (hover, pressed and press-scale states).</summary>
+    public const string WideButtonStyleKey = "SbWideButton";
+
     private static readonly ArgbColor DefaultAccent = new(0xFF, 0x5B, 0x8C, 0xFF);
     private static readonly ArgbColor DarkSurface = new(0xFF, 0x1A, 0x1D, 0x24);
     private static readonly ArgbColor LightSurface = new(0xFF, 0xF3, 0xF4, 0xF7);
@@ -37,6 +40,7 @@ public sealed class TaskbarTheme : ObservableObject
     private bool _useAcrylic = true;
     private Color _surfaceOpaque = ToColor(DarkSurface);
     private bool _registered;
+    private ResourceDictionary? _barStyles;
 
     public TaskbarTheme()
     {
@@ -134,6 +138,16 @@ public sealed class TaskbarTheme : ObservableObject
         resources["SB.Transparent"] = Transparent;
         _registered = true;
     }
+
+    /// <summary>
+    /// Publishes the named styles of the bar surface (<c>SbItemButton</c>, <c>SbWideButton</c>, …) so widget views,
+    /// which are built in code, can look like the bar's own items. Called by the taskbar window once its XAML loaded.
+    /// </summary>
+    public void RegisterStyles(ResourceDictionary barResources) => _barStyles = barResources;
+
+    /// <summary>A style of the bar surface, or null when the bar has not been created yet or has no such style.</summary>
+    public Style? FindStyle(string key) =>
+        _barStyles is not null && _barStyles.TryGetValue(key, out var value) ? value as Style : null;
 
     private static Color ToColor(ArgbColor c) => Color.FromArgb(c.A, c.R, c.G, c.B);
 }

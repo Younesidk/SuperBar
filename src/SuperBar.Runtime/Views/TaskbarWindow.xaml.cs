@@ -38,6 +38,7 @@ public sealed partial class TaskbarWindow : Window
         // The XAML below references SB.* resources; they must exist before it loads.
         theme.RegisterResources(Application.Current.Resources);
         InitializeComponent();
+        theme.RegisterStyles(Root.Resources);
 
         // Window-level x:Bind bindings normally initialize on Window.Activated, but the bar is shown without ever
         // being activated (it must not steal focus), so initialize them explicitly. Idempotent.

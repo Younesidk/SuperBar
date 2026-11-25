@@ -19,6 +19,11 @@ public enum SectionKind
     Applications,
     Widget,
     SystemTray,
+
+    /// <summary>
+    /// Legacy (schema 1): the clock was a built-in section. It is a widget now; <see cref="SettingsNormalizer"/>
+    /// rewrites these entries. The member stays so that settings saved by older versions still load.
+    /// </summary>
     Clock,
 }
 
@@ -93,7 +98,7 @@ public sealed class PinnedApp
 /// <summary>Root settings aggregate. Treated as an immutable snapshot once published by the settings service.</summary>
 public sealed class SuperBarSettings
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public AppearanceSettings Appearance { get; set; } = new();

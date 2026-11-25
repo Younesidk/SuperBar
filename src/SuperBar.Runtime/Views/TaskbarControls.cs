@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -15,7 +16,6 @@ public sealed partial class SectionTemplateSelector : DataTemplateSelector
     public DataTemplate? AppsTemplate { get; set; }
     public DataTemplate? WidgetTemplate { get; set; }
     public DataTemplate? SystemTrayTemplate { get; set; }
-    public DataTemplate? ClockTemplate { get; set; }
 
     protected override DataTemplate? SelectTemplateCore(object item) => item switch
     {
@@ -23,7 +23,6 @@ public sealed partial class SectionTemplateSelector : DataTemplateSelector
         AppsSectionViewModel => AppsTemplate,
         WidgetSectionViewModel => WidgetTemplate,
         SystemTraySectionViewModel => SystemTrayTemplate,
-        ClockSectionViewModel => ClockTemplate,
         _ => null,
     };
 
@@ -143,13 +142,18 @@ public sealed partial class RunningIndicator : Grid
 
 /// <summary>
 /// Hosts one widget's UI element in its taskbar slot. A UI element can only have one parent, and the zone
-/// item controls re-create their containers when sections move, so the slot detaches the element from any
-/// previous host before adopting it, and releases it when unloaded.
+/// item controls re-create their containers when sections move, so a new slot can receive an element that the
+/// old (unloading) slot still holds. Every slot therefore records which elements it hosts, and a slot adopting
+/// an element first makes its current host let go of it. WinUI does not report a ContentControl as its content's
+/// <c>Parent</c>, so this bookkeeping is the only reliable way to find the previous host.
 /// </summary>
 public sealed partial class WidgetSlot : ContentControl
 {
     public static readonly DependencyProperty ElementProperty = DependencyProperty.Register(
         nameof(Element), typeof(UIElement), typeof(WidgetSlot), new PropertyMetadata(null, (d, _) => ((WidgetSlot)d).Attach()));
+
+    // UI thread only. Weak keys: an element that is no longer used anywhere is not kept alive by this table.
+    private static readonly ConditionalWeakTable<UIElement, WidgetSlot> Hosts = new();
 
     public WidgetSlot()
     {
@@ -159,9 +163,10 @@ public sealed partial class WidgetSlot : ContentControl
         Loaded += (_, _) => Attach();
         Unloaded += (_, _) =>
         {
-            if (ReferenceEquals(Content, Element))
+            // A slot that is loaded again (stale Unloaded after a re-parent) keeps its element.
+            if (!IsLoaded && Content is UIElement element)
             {
-                Content = null;
+                Release(element);
             }
         };
     }
@@ -176,21 +181,45 @@ public sealed partial class WidgetSlot : ContentControl
             return;
         }
 
+        if (Content is UIElement previous)
+        {
+            Release(previous);
+        }
+
         if (element is not null)
         {
             Detach(element);
         }
 
         Content = element;
+        if (element is not null)
+        {
+            Hosts.AddOrUpdate(element, this);
+        }
+    }
+
+    /// <summary>Lets go of <paramref name="element"/> if this slot hosts it.</summary>
+    private void Release(UIElement element)
+    {
+        if (ReferenceEquals(Content, element))
+        {
+            Content = null;
+        }
+
+        if (Hosts.TryGetValue(element, out var host) && ReferenceEquals(host, this))
+        {
+            Hosts.Remove(element);
+        }
     }
 
     private void Detach(UIElement element)
     {
-        if (element is FrameworkElement { Parent: WidgetSlot other } && !ReferenceEquals(other, this))
+        if (Hosts.TryGetValue(element, out var host) && !ReferenceEquals(host, this))
         {
-            other.Content = null;
+            host.Release(element);
         }
 
+        // Fallback for an element that was placed somewhere other than a slot.
         switch (VisualTreeHelper.GetParent(element))
         {
             case ContentPresenter presenter when !ReferenceEquals(presenter.Content, null) && ReferenceEquals(presenter.Content, element):

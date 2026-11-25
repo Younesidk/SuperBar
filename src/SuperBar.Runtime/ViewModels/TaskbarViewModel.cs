@@ -2,10 +2,10 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
 using SuperBar.Core.Mvvm;
-using SuperBar.Core.Runtime;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
 using SuperBar.Runtime.Services;
+using SuperBar.Runtime.Theming;
 using SuperBar.Runtime.Widgets;
 using SuperBar.Widgets;
 
@@ -22,10 +22,10 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     private readonly IServiceProvider _services;
     private readonly ILoggerFactory _loggerFactory;
     private readonly WidgetViewResolver _widgetViews;
+    private readonly TaskbarTheme _theme;
     private readonly ILogger _logger;
     private readonly StartSectionViewModel _start;
     private readonly SystemTraySectionViewModel _tray;
-    private readonly ClockSectionViewModel _clock;
     private readonly Dictionary<string, WidgetSectionViewModel> _widgetSections = new(StringComparer.Ordinal);
     private bool _active;
 
@@ -37,7 +37,7 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         IconCache icons,
         IWidgetRegistry widgets,
         WidgetViewResolver widgetViews,
-        IUiDispatcher dispatcher,
+        TaskbarTheme theme,
         IServiceProvider services,
         ILoggerFactory loggerFactory,
         Action openControlCenter,
@@ -47,11 +47,11 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         _services = services;
         _loggerFactory = loggerFactory;
         _widgetViews = widgetViews;
+        _theme = theme;
         _logger = loggerFactory.CreateLogger<TaskbarViewModel>();
         _start = new StartSectionViewModel("start", shell);
         Apps = new AppsSectionViewModel("apps", tracker, switcher, launcher, icons, loggerFactory.CreateLogger<AppsSectionViewModel>());
         _tray = new SystemTraySectionViewModel("tray", shell);
-        _clock = new ClockSectionViewModel("clock", shell, dispatcher);
 
         OpenControlCenterCommand = new RelayCommand(openControlCenter);
         OpenTaskManagerCommand = new RelayCommand(shell.OpenTaskManager);
@@ -122,7 +122,7 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
             else
             {
                 var host = new WidgetHost(descriptor, instance, _services, _loggerFactory);
-                _widgetSections[instance.InstanceId] = new WidgetSectionViewModel("widget:" + instance.InstanceId, host, _widgetViews);
+                _widgetSections[instance.InstanceId] = new WidgetSectionViewModel("widget:" + instance.InstanceId, host, _widgetViews, _theme);
             }
         }
 
@@ -131,7 +131,7 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
             var section = _widgetSections[id];
             _widgetSections.Remove(id);
             RemoveFromZones(section);
-            section.Host.Dispose();
+            section.Dispose();
         }
     }
 
@@ -155,18 +155,33 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // Reset rather than move: hosted widget views must be detached before being re-parented.
+        // Sections that leave this zone (removed, or moved to another zone) stop first.
         foreach (var removed in zone.Except(desired).ToList())
         {
             removed.Deactivate();
+            zone.Remove(removed);
         }
 
-        zone.Clear();
-        foreach (var s in desired)
+        // Edit the collection in place rather than resetting it: a section that stays keeps its item container,
+        // so its hosted widget view is not re-parented when another widget is added, removed or toggled.
+        for (var i = 0; i < desired.Count; i++)
         {
+            var s = desired[i];
+            var current = zone.IndexOf(s);
+            if (current == i)
+            {
+                continue;
+            }
+
+            if (current >= 0)
+            {
+                zone.Move(current, i);
+                continue;
+            }
+
             // A section moved from another zone must leave it first.
             RemoveFromZones(s);
-            zone.Add(s);
+            zone.Insert(i, s);
             if (_active)
             {
                 s.Activate();
@@ -179,7 +194,6 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         SectionKind.Start => _start,
         SectionKind.Applications => Apps,
         SectionKind.SystemTray => _tray,
-        SectionKind.Clock => _clock,
         SectionKind.Widget when placement.WidgetInstanceId is { } id && _widgetSections.TryGetValue(id, out var w) => w,
         _ => null,
     };
@@ -189,10 +203,9 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         Deactivate();
         foreach (var w in _widgetSections.Values)
         {
-            w.Host.Dispose();
+            w.Dispose();
         }
 
         _widgetSections.Clear();
-        _clock.Dispose();
     }
 }

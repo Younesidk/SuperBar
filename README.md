@@ -46,9 +46,9 @@ Window-chrome tweaks WinUI cannot express (tool-window style, no DWM rounded cor
 showing without activation) go through `IWindowChrome` too; the only Win32 interop in the UI projects is getting
 the window handle (`WindowNative.GetWindowHandle`).
 
-Only `SuperBar.App`, `SuperBar.Runtime` and `SuperBar.ControlCenter` reference WinUI. Widgets expose either a UI
-element or a plain presentation model (the taskbar renders models with views registered by `AddWidgetView<TModel>`),
-and timers go through `IUiDispatcher`, so the widget system is tested without a UI thread.
+Only `SuperBar.App`, `SuperBar.Runtime` and `SuperBar.ControlCenter` reference WinUI. Widgets expose a plain
+presentation model (the taskbar renders it with the view marked `[WidgetViewFor(typeof(TModel))]`), and timers go
+through `IUiDispatcher`, so the widget system is tested without a UI thread.
 
 ## How the taskbar replacement works
 
@@ -92,16 +92,28 @@ A hidden listener window receives the `TaskbarCreated` broadcast when Explorer r
 
 ## Widgets
 
-A widget type is a `WidgetDescriptor`. It defines an id, a display name, default/min/max width, and a factory that returns an `IWidget` (a view plus `Activate`, `Deactivate`, `ApplyOptions` and `Dispose`).
-Instances are configured in settings (`WidgetInstanceSettings`: id, type, enabled, width, options) and placed by layout entries.
-`WidgetHost` handles:
-- lazy creation;
-- lifecycle (deactivated while the bar is hidden or a full-screen app runs);
-- width clamping;
-- fault isolation.
+A widget is two classes and no registration code:
 
-Widgets render **inside** the bar's layout. They never get their own window.
-To register a new widget type: `services.AddWidget(MyWidget.Descriptor)`. The example widget is `SystemResourcesWidget` (CPU and memory, sampled every 2 s while active).
+- **Logic** in `SuperBar.Widgets/BuiltIn/<Name>/`: a class marked `[Widget("superbar.<name>", "Display name", ...)]` that derives from `WidgetBase` (or `WidgetBase<TSettings, TModel>` for typed settings), plus its presentation model. It is created with constructor injection.
+- **View** in `SuperBar.Runtime/Widgets/<Name>/`: a `WidgetViewBase` marked `[WidgetViewFor(typeof(TModel))]`.
+
+Both are discovered by their attribute at start-up. Instances are configured in settings (`WidgetInstanceSettings`: id, type, enabled, width, options) and placed by layout entries.
+
+`WidgetHost` owns each instance and runs this lifecycle: create → load settings (silently) → `InitializeAsync` once → `Ready` ⇄ `Active`. A widget is active only while the bar is visible and no full-screen app runs.
+
+While active, a widget starts all of its work through the `IWidgetScope` it receives:
+
+| Member | Use |
+|---|---|
+| `Every`, `After` | Timers on the UI thread |
+| `Poll`, `Run` | Work on the thread pool with a timeout; only the result returns to the UI thread |
+| `Own` | Hooks and subscriptions to release |
+
+The scope ends on deactivation, so nothing has to be stopped by hand. Views talk back through `WidgetCommand`s on the model, which the widget wires with `On(Model.Command, handler)`.
+
+Fault isolation: every call into a widget is guarded. A widget that throws (in a lifecycle method, a timer tick, a result handler or a command) is disposed and replaced by an error placeholder, then restarted after 30 s, 2 min and 10 min; after that a click on the placeholder restarts it. Failing or hanging background work is retried with back-off and does not fault the widget.
+
+Widgets render **inside** the bar's layout. They never get their own window. The built-in widgets are `ClockWidget` and `SystemResourcesWidget` (CPU and memory, sampled every 2 s while active).
 
 ## Settings
 

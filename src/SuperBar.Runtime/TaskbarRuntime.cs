@@ -186,7 +186,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         _services.GetRequiredService<IconCache>(),
         _services.GetRequiredService<IWidgetRegistry>(),
         _services.GetRequiredService<WidgetViewResolver>(),
-        _dispatcher,
+        _services.GetRequiredService<TaskbarTheme>(),
         _services,
         _services.GetRequiredService<ILoggerFactory>(),
         openControlCenter: () => _services.GetRequiredService<IControlCenterLauncher>().Show(),
