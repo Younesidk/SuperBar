@@ -39,6 +39,32 @@ public static class TaskbarBrushes
     /// <summary>Application button background: highlighted while its window is the active one.</summary>
     public static Brush? ItemBackground(bool isActive) =>
         Application.Current.Resources[isActive ? "SB.ActiveItem" : "SB.Transparent"] as Brush;
+
+    /// <summary>The stacked "more windows" layer shows while a grouped app is hovered or active.</summary>
+    public static double StackOpacity(bool hasMultipleWindows, bool isHovered, bool isActive) =>
+        hasMultipleWindows && (isHovered || isActive) ? 1 : 0;
+}
+
+/// <summary>
+/// The Windows 11 style "more windows" layer of a grouped application button: a second plate behind the button,
+/// shifted to the right. Only the strip that sticks out past the button is drawn, because the button's own
+/// translucent hover background would otherwise double up over the plate.
+/// </summary>
+public sealed partial class StackPlate : Grid
+{
+    public const double Offset = 4;
+    public const double Inset = 4;
+
+    public StackPlate()
+    {
+        IsHitTestVisible = false;
+        Margin = new Thickness(Offset, Inset, -Offset, Inset);
+        OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(120) };
+        SizeChanged += (_, e) => Clip = new RectangleGeometry
+        {
+            Rect = new Windows.Foundation.Rect(Math.Max(0, e.NewSize.Width - Offset), 0, Offset, e.NewSize.Height),
+        };
+    }
 }
 
 /// <summary>

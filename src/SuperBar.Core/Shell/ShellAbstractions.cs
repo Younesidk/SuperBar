@@ -134,6 +134,32 @@ public interface IWindowSwitcher
     void ActivateOrMinimize(nint windowHandle, bool isActive);
 
     void Activate(nint windowHandle);
+
+    /// <summary>Asks the window to close, as the taskbar's "Close window" does (the app may prompt or refuse).</summary>
+    void Close(nint windowHandle);
+}
+
+/// <summary>The mouse pointer's position on screen, in physical pixels.</summary>
+public interface ICursorService
+{
+    bool TryGetPosition(out int x, out int y);
+}
+
+/// <summary>Live DWM thumbnails of other windows, drawn into one of SuperBar's own windows.</summary>
+public interface IWindowThumbnailService
+{
+    /// <summary>Registers a thumbnail of <paramref name="sourceWindow"/> inside <paramref name="destinationWindow"/>; null when DWM refuses.</summary>
+    IWindowThumbnail? Create(nint destinationWindow, nint sourceWindow);
+}
+
+/// <summary>One registered thumbnail. Dispose to unregister it.</summary>
+public interface IWindowThumbnail : IDisposable
+{
+    /// <summary>The source window's size in physical pixels; empty when unknown.</summary>
+    PixelSize SourceSize { get; }
+
+    /// <summary>Draws the thumbnail at <paramref name="destination"/>: physical pixels relative to the destination window's client area.</summary>
+    void Show(ScreenRect destination);
 }
 
 public interface IAppLauncher
@@ -186,7 +212,8 @@ public interface IWindowChrome
     /// (so the AppBar can size it down to <c>AppearanceSettings.MinHeight</c> at any DPI).
     /// The window stays activatable, so clicks, flyouts and <c>SetForegroundWindow</c> keep working.
     /// </summary>
-    void ApplyShellSurfaceStyle(nint windowHandle);
+    /// <param name="roundedCorners">Keep the Windows 11 rounded corners and outline, for popups such as the window preview.</param>
+    void ApplyShellSurfaceStyle(nint windowHandle, bool roundedCorners = false);
 
     /// <summary>Shows the window without activating it or stealing focus (SW_SHOWNOACTIVATE).</summary>
     void ShowWithoutActivation(nint windowHandle);

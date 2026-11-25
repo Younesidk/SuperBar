@@ -198,13 +198,14 @@ public sealed class AppButtonViewModel : ObservableObject
 {
     private readonly AppsSectionViewModel _owner;
     private string _displayName = "";
-    private string _toolTip = "";
+    private string? _toolTip;
     private readonly RelayCommand _launchNewCommand;
     private ImageSource? _icon;
     private bool _isPinned;
     private bool _isRunning;
     private bool _isActive;
     private bool _hasMultipleWindows;
+    private bool _isHovered;
 
     public AppButtonViewModel(string key, AppsSectionViewModel owner)
     {
@@ -229,7 +230,8 @@ public sealed class AppButtonViewModel : ObservableObject
 
     public string DisplayName { get => _displayName; private set => SetProperty(ref _displayName, value); }
 
-    public string ToolTip { get => _toolTip; private set => SetProperty(ref _toolTip, value); }
+    /// <summary>The app name for a pinned app that is not running; running apps show window previews instead.</summary>
+    public string? ToolTip { get => _toolTip; private set => SetProperty(ref _toolTip, value); }
 
     public ImageSource? Icon
     {
@@ -259,6 +261,9 @@ public sealed class AppButtonViewModel : ObservableObject
 
     public bool HasMultipleWindows { get => _hasMultipleWindows; private set => SetProperty(ref _hasMultipleWindows, value); }
 
+    /// <summary>Set by the view while the pointer is over the button.</summary>
+    public bool IsHovered { get => _isHovered; set => SetProperty(ref _isHovered, value); }
+
     public bool CanLaunch => LaunchPath is not null;
 
     internal void Update(PinnedApp? pin, List<TrackedWindow> windows, nint activeWindow, ImageSource? icon)
@@ -277,6 +282,6 @@ public sealed class AppButtonViewModel : ObservableObject
         IsRunning = windows.Count > 0;
         HasMultipleWindows = windows.Count > 1;
         IsActive = activeWindow != 0 && windows.Any(w => w.Handle == activeWindow);
-        ToolTip = windows.Count == 0 ? DisplayName : string.Join(Environment.NewLine, windows.Select(w => w.Title));
+        ToolTip = windows.Count == 0 ? DisplayName : null;
     }
 }

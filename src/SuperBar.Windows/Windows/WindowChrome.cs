@@ -23,7 +23,7 @@ internal sealed class WindowChrome(ILogger<WindowChrome> logger) : IWindowChrome
     /// </summary>
     internal static event Action? SurfaceActivated;
 
-    public void ApplyShellSurfaceStyle(nint windowHandle)
+    public void ApplyShellSurfaceStyle(nint windowHandle, bool roundedCorners = false)
     {
         if (windowHandle == 0)
         {
@@ -47,11 +47,15 @@ internal sealed class WindowChrome(ILogger<WindowChrome> logger) : IWindowChrome
         SetWindowLongPtr(windowHandle, GWL_STYLE, (nint)SurfaceStyle((long)GetWindowLongPtr(windowHandle, GWL_STYLE)));
         SetWindowPos(windowHandle, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
-        // Windows 11: sharp, flush edges and no 1px DWM outline. Both attributes fail harmlessly on Windows 10.
-        var corner = DWMWCP_DONOTROUND;
+        // Windows 11: the bar gets sharp, flush edges and no 1px DWM outline; popups keep the system's rounded
+        // corners and outline. Both attributes fail harmlessly on Windows 10.
+        var corner = roundedCorners ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
         DwmSetWindowAttribute(windowHandle, DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
-        var border = DWMWA_COLOR_NONE;
-        DwmSetWindowAttribute(windowHandle, DWMWA_BORDER_COLOR, ref border, sizeof(uint));
+        if (!roundedCorners)
+        {
+            var border = DWMWA_COLOR_NONE;
+            DwmSetWindowAttribute(windowHandle, DWMWA_BORDER_COLOR, ref border, sizeof(uint));
+        }
 
         logger.LogDebug("Applied shell-surface chrome to window 0x{Handle:X}", windowHandle);
     }

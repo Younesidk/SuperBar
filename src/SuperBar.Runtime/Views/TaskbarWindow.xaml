@@ -125,12 +125,21 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:AppButtonViewModel">
+              <Grid VerticalAlignment="Center">
+              <views:StackPlate Background="{StaticResource SB.ActiveItem}"
+                                CornerRadius="{Binding ItemCornerRadius, Source={StaticResource SB.Theme}}"
+                                Opacity="{x:Bind views:TaskbarBrushes.StackOpacity(HasMultipleWindows, IsHovered, IsActive), Mode=OneWay}" />
               <Button Style="{StaticResource SbItemButton}"
                       Width="{Binding ItemSize, Source={StaticResource SB.Theme}}"
                       Background="{x:Bind views:TaskbarBrushes.ItemBackground(IsActive), Mode=OneWay}"
                       Command="{x:Bind ClickCommand}"
+                      Click="OnAppClick"
                       ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
                       ContextRequested="OnAppContextRequested"
+                      PointerEntered="OnAppPointerEntered"
+                      PointerExited="OnAppPointerExited"
+                      PointerCanceled="OnAppPointerExited"
+                      PointerCaptureLost="OnAppPointerExited"
                       AutomationProperties.Name="{x:Bind DisplayName, Mode=OneWay}">
                 <Grid Width="{Binding ItemSize, Source={StaticResource SB.Theme}}"
                       Height="{Binding ItemSize, Source={StaticResource SB.Theme}}">
@@ -150,6 +159,7 @@
                                           InactiveBrush="{StaticResource SB.Subtle}" />
                 </Grid>
               </Button>
+              </Grid>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>

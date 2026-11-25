@@ -28,6 +28,8 @@ public static class WindowsServiceCollectionExtensions
         services.AddSingleton<IIconProvider, IconProvider>();
         services.AddSingleton<IShellCommands, ShellCommands>();
         services.AddSingleton<IWindowChrome, WindowChrome>();
+        services.AddSingleton<IWindowThumbnailService, WindowThumbnailService>();
+        services.AddSingleton<ICursorService, CursorService>();
         services.AddSingleton<ISystemMetricsProvider, SystemMetricsProvider>();
         return services;
     }

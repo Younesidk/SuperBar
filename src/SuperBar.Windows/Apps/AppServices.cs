@@ -74,6 +74,15 @@ internal sealed class WindowSwitcher(ILogger<WindowSwitcher> logger) : IWindowSw
             logger.LogDebug("SetForegroundWindow refused for 0x{Handle:X}", windowHandle);
         }
     }
+
+    public void Close(nint windowHandle)
+    {
+        // SC_CLOSE rather than WM_CLOSE: it is what the system menu and the Windows taskbar send.
+        if (IsWindow(windowHandle) && !PostMessage(windowHandle, WM_SYSCOMMAND, SC_CLOSE, 0))
+        {
+            logger.LogDebug("Could not ask window 0x{Handle:X} to close", windowHandle);
+        }
+    }
 }
 
 internal sealed class SystemMetricsProvider : ISystemMetricsProvider

@@ -32,6 +32,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
     private readonly IUiTimer _displayDebounce;
     private TaskbarViewModel? _viewModel;
     private TaskbarWindow? _window;
+    private WindowPreviewPopup? _preview;
     private IAppBarRegistration? _appBar;
     private bool _disposed;
 
@@ -89,7 +90,19 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
 
         var monitor = _monitors.GetPrimaryMonitor();
         var chrome = _services.GetRequiredService<IWindowChrome>();
-        _window = new TaskbarWindow(_viewModel, _services.GetRequiredService<TaskbarTheme>(), chrome, _services.GetRequiredService<ILogger<TaskbarWindow>>());
+        var theme = _services.GetRequiredService<TaskbarTheme>();
+        var windowLogger = _services.GetRequiredService<ILogger<TaskbarWindow>>();
+        _preview = new WindowPreviewPopup(
+            _services.GetRequiredService<IWindowThumbnailService>(),
+            _services.GetRequiredService<ICursorService>(),
+            chrome,
+            _services.GetRequiredService<IWindowSwitcher>(),
+            _tracker,
+            _monitors,
+            _dispatcher,
+            theme,
+            windowLogger);
+        _window = new TaskbarWindow(_viewModel, theme, chrome, _preview, windowLogger);
         _window.ApplyAppearance(settings.Appearance);
 
         // Pre-place at the bottom edge (physical pixels) so there is no flash elsewhere; the AppBar takes over immediately.
@@ -134,6 +147,9 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         }
 
         _nativeTaskbar.Restore();
+
+        _preview?.Dispose();
+        _preview = null;
 
         if (_window is not null)
         {
@@ -230,6 +246,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         // Suspend widgets and timers while a game / video is full-screen.
         if (fullscreen)
         {
+            _preview?.Hide();
             _viewModel?.Deactivate();
         }
         else

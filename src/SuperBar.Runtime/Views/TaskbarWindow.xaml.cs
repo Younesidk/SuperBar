@@ -5,10 +5,13 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Input;
+using SuperBar.Core.Geometry;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
 using SuperBar.Runtime.Theming;
 using SuperBar.Runtime.ViewModels;
+using Windows.Foundation;
 using WinRT.Interop;
 
 namespace SuperBar.Runtime.Views;
@@ -21,11 +24,13 @@ public sealed partial class TaskbarWindow : Window
 {
     private readonly TaskbarTheme _theme;
     private readonly TaskbarAcrylicBackdrop _acrylic;
+    private readonly WindowPreviewPopup _preview;
 
-    public TaskbarWindow(TaskbarViewModel viewModel, TaskbarTheme theme, IWindowChrome chrome, ILogger<TaskbarWindow> logger)
+    public TaskbarWindow(TaskbarViewModel viewModel, TaskbarTheme theme, IWindowChrome chrome, WindowPreviewPopup preview, ILogger<TaskbarWindow> logger)
     {
         ViewModel = viewModel;
         _theme = theme;
+        _preview = preview;
         _acrylic = new TaskbarAcrylicBackdrop(logger);
 
         // The XAML below references SB.* resources; they must exist before it loads.
@@ -94,10 +99,47 @@ public sealed partial class TaskbarWindow : Window
             return;
         }
 
+        _preview.Hide();
+
         var menu = new MenuFlyout { ShouldConstrainToRootBounds = false, Placement = FlyoutPlacementMode.Top };
         menu.Items.Add(new MenuFlyoutItem { Text = app.DisplayName, IsEnabled = false });
         menu.Items.Add(new MenuFlyoutItem { Text = "Open new window", Command = app.LaunchNewCommand });
         ShowContextMenu(menu, button, args);
+    }
+
+    private void OnAppPointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: AppButtonViewModel app } button)
+        {
+            return;
+        }
+
+        app.IsHovered = true;
+        if (e.Pointer.PointerDeviceType == PointerDeviceType.Mouse)
+        {
+            _preview.OnAppHovered(app, ColumnOf(button));
+        }
+    }
+
+    private void OnAppPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: AppButtonViewModel app })
+        {
+            app.IsHovered = false;
+            _preview.OnAppUnhovered(app);
+        }
+    }
+
+    private void OnAppClick(object sender, RoutedEventArgs e) => _preview.Hide();
+
+    /// <summary>The bar's full-height column under <paramref name="element"/>, in physical screen pixels.</summary>
+    private ScreenRect ColumnOf(FrameworkElement element)
+    {
+        var scale = Root.XamlRoot?.RasterizationScale ?? 1.0;
+        var origin = element.TransformToVisual(Root).TransformPoint(new Point(0, 0));
+        var bar = AppWindow.Position;
+        var left = bar.X + (int)Math.Round(origin.X * scale);
+        return new ScreenRect(left, bar.Y, left + (int)Math.Round(element.ActualWidth * scale), bar.Y + AppWindow.Size.Height);
     }
 
     private static void ShowContextMenu(MenuFlyout menu, FrameworkElement target, ContextRequestedEventArgs args)

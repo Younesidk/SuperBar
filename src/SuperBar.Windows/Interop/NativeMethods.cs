@@ -163,6 +163,24 @@ internal struct MEMORYSTATUSEX
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct SIZE
+{
+    public int cx;
+    public int cy;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct DWM_THUMBNAIL_PROPERTIES
+{
+    public uint dwFlags;
+    public RECT rcDestination;
+    public RECT rcSource;
+    public byte opacity;
+    [MarshalAs(UnmanagedType.Bool)] public bool fVisible;
+    [MarshalAs(UnmanagedType.Bool)] public bool fSourceClientAreaOnly;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct POINT
 {
     public int X;
@@ -220,6 +238,8 @@ internal static class NativeMethods
 
     // --- Window messages ---------------------------------------------------------------------
     public const uint WM_ACTIVATE = 0x0006;
+    public const uint WM_SYSCOMMAND = 0x0112;
+    public const nint SC_CLOSE = 0xF060;
     public const int WA_INACTIVE = 0;
     public const uint WM_WINDOWPOSCHANGED = 0x0047;
     public const uint WM_DISPLAYCHANGE = 0x007E;
@@ -291,6 +311,11 @@ internal static class NativeMethods
     public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     public const int DWMWA_BORDER_COLOR = 34;
     public const int DWMWCP_DONOTROUND = 1;
+    public const int DWMWCP_ROUND = 2;
+    public const uint DWM_TNP_RECTDESTINATION = 0x01;
+    public const uint DWM_TNP_OPACITY = 0x04;
+    public const uint DWM_TNP_VISIBLE = 0x08;
+    public const uint DWM_TNP_SOURCECLIENTAREAONLY = 0x10;
     public const uint DWMWA_COLOR_NONE = 0xFFFFFFFE;
     public const uint MONITORINFOF_PRIMARY = 1;
     public const uint MONITOR_DEFAULTTOPRIMARY = 1;
@@ -466,6 +491,18 @@ internal static class NativeMethods
 
     [DllImport("shcore.dll")]
     public static extern int GetDpiForMonitor(nint hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmRegisterThumbnail(nint hwndDestination, nint hwndSource, out nint phThumbnailId);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmUnregisterThumbnail(nint hThumbnailId);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmUpdateThumbnailProperties(nint hThumbnailId, ref DWM_THUMBNAIL_PROPERTIES ptnProperties);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmQueryThumbnailSourceSize(nint hThumbnail, out SIZE pSize);
 
     [DllImport("dwmapi.dll")]
     public static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
