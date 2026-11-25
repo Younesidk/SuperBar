@@ -153,7 +153,11 @@ public interface IIconProvider
 /// <summary>Shell surfaces that SuperBar opens rather than re-implements.</summary>
 public interface IShellCommands
 {
-    void OpenStartMenu();
+    /// <summary>Opens Start, or closes it when it is already open (including when the click on the bar is what dismissed it).</summary>
+    void ToggleStartMenu();
+
+    /// <summary>Opens or closes Explorer's "hidden icons" notification-area flyout next to the bar.</summary>
+    void ToggleTrayOverflow();
     void OpenNotificationCenter();
     void OpenQuickSettings();
     void OpenTaskManager();

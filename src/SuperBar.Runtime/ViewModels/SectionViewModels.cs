@@ -27,7 +27,7 @@ public abstract class SectionViewModel(string id) : ObservableObject
 
 public sealed class StartSectionViewModel(string id, IShellCommands shell) : SectionViewModel(id)
 {
-    public ICommand OpenStartCommand { get; } = new RelayCommand(shell.OpenStartMenu);
+    public ICommand ToggleStartCommand { get; } = new RelayCommand(shell.ToggleStartMenu);
 }
 
 public sealed class WidgetSectionViewModel(string id, WidgetHost host, WidgetViewResolver views) : SectionViewModel(id)
@@ -90,14 +90,14 @@ public sealed class WidgetSectionViewModel(string id, WidgetHost host, WidgetVie
 
 /// <summary>
 /// System section. Real notification-area (tray icon) hosting requires SuperBar to own the shell's
-/// Shell_TrayWnd notification protocol and is NOT implemented in this milestone; the overflow button is a placeholder.
-/// The quick-settings button opens the real Windows Quick Settings flyout.
+/// Shell_TrayWnd notification protocol and is NOT implemented in this milestone; until then the overflow button
+/// opens Explorer's own "hidden icons" flyout. The quick-settings button opens the real Windows Quick Settings flyout.
 /// </summary>
 public sealed class SystemTraySectionViewModel(string id, IShellCommands shell) : SectionViewModel(id)
 {
     public ICommand OpenQuickSettingsCommand { get; } = new RelayCommand(shell.OpenQuickSettings);
 
-    public string OverflowToolTip => "Notification area icons are not integrated yet (planned milestone)";
+    public ICommand ToggleOverflowCommand { get; } = new RelayCommand(shell.ToggleTrayOverflow);
 }
 
 public sealed class ClockSectionViewModel : SectionViewModel, IDisposable

@@ -106,7 +106,8 @@
       <DataTemplate x:Key="StartTemplate" x:DataType="vm:StartSectionViewModel">
         <Button Style="{StaticResource SbItemButton}"
                 Width="{Binding ItemSize, Source={StaticResource SB.Theme}}"
-                Command="{x:Bind OpenStartCommand}"
+                Command="{x:Bind ToggleStartCommand}"
+                ClickMode="Press"
                 ToolTipService.ToolTip="Start"
                 AutomationProperties.Name="Start">
           <Path Fill="{StaticResource SB.Accent}" Width="18" Height="18" Stretch="Uniform"
@@ -173,8 +174,9 @@
       <!-- System section -->
       <DataTemplate x:Key="SystemTrayTemplate" x:DataType="vm:SystemTraySectionViewModel">
         <StackPanel Orientation="Horizontal" Spacing="2">
-          <Button Style="{StaticResource SbNarrowButton}" ToolTipService.ToolTip="{x:Bind OverflowToolTip}" Opacity="0.55"
-                  AutomationProperties.Name="Notification area">
+          <!-- Both shell-flyout buttons act on press: see ShellCommands for why the timing matters. -->
+          <Button Style="{StaticResource SbNarrowButton}" Command="{x:Bind ToggleOverflowCommand}" ClickMode="Press"
+                  ToolTipService.ToolTip="Show hidden icons" AutomationProperties.Name="Show hidden icons">
             <Path Style="{StaticResource SbGlyph}" Data="M1,7 L6,2 L11,7" />
           </Button>
           <Button Style="{StaticResource SbWideButton}" Command="{x:Bind OpenQuickSettingsCommand}"

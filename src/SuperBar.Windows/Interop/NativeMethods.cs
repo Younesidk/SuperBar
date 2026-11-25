@@ -220,6 +220,8 @@ internal static class NativeMethods
 
     // --- Window messages ---------------------------------------------------------------------
     public const uint WM_ACTIVATE = 0x0006;
+    public const uint WM_MOUSEACTIVATE = 0x0021;
+    public const int WA_CLICKACTIVE = 2;
     public const uint WM_WINDOWPOSCHANGED = 0x0047;
     public const uint WM_DISPLAYCHANGE = 0x007E;
     public const uint WM_NCDESTROY = 0x0082;
@@ -293,6 +295,7 @@ internal static class NativeMethods
     public const uint DWMWA_COLOR_NONE = 0xFFFFFFFE;
     public const uint MONITORINFOF_PRIMARY = 1;
     public const uint MONITOR_DEFAULTTOPRIMARY = 1;
+    public const uint MONITOR_DEFAULTTONEAREST = 2;
     public const int MDT_EFFECTIVE_DPI = 0;
     public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
     public const uint EVENT_OBJECT_SHOW = 0x8002;
@@ -383,6 +386,17 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern nint MonitorFromWindow(nint hwnd, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    public static extern nint MonitorFromPoint(POINT pt, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetCursorPos(out POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetWindowRect(nint hWnd, out RECT lpRect);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
