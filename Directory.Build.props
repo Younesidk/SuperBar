@@ -1,11 +1,14 @@
 <Project>
   <PropertyGroup>
-    <!-- Plain net10.0-windows (no WinRT projection assembly); Windows 10/11 targeting is declared in app.manifest. -->
+    <!--
+      Pure projects (Core, Infrastructure, Windows, Widgets, Tests) target plain net10.0-windows: no WinRT projection
+      and no UI framework, so they stay headless-testable. The WinUI 3 projects (App, Runtime, ControlCenter) import
+      build/SuperBar.WinUI.props, which retargets them to net10.0-windows10.0.19041.0 with the Windows App SDK.
+    -->
     <TargetFramework>net10.0-windows</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <Version>0.1.0</Version>
     <Company>SuperBar</Company>

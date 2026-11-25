@@ -1,11 +1,12 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
-using Avalonia;
 using Microsoft.Extensions.Logging;
 using SuperBar.Core.Mvvm;
+using SuperBar.Core.Runtime;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
 using SuperBar.Runtime.Services;
+using SuperBar.Runtime.Widgets;
 using SuperBar.Widgets;
 
 namespace SuperBar.Runtime.ViewModels;
@@ -13,20 +14,20 @@ namespace SuperBar.Runtime.ViewModels;
 /// <summary>
 /// The single taskbar surface: three zones of modular sections built from <see cref="SuperBarSettings.Layout"/>.
 /// Widget instances are hosted (not windowed) and their lifecycles follow the bar's visibility.
+/// Visual metrics (spacing, padding, item size, corners) live in <see cref="Theming.TaskbarTheme"/>.
 /// </summary>
 public sealed class TaskbarViewModel : ObservableObject, IDisposable
 {
     private readonly IWidgetRegistry _widgets;
     private readonly IServiceProvider _services;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly WidgetViewResolver _widgetViews;
     private readonly ILogger _logger;
     private readonly StartSectionViewModel _start;
     private readonly SystemTraySectionViewModel _tray;
     private readonly ClockSectionViewModel _clock;
     private readonly Dictionary<string, WidgetSectionViewModel> _widgetSections = new(StringComparer.Ordinal);
     private bool _active;
-    private double _itemSpacing = 6;
-    private Thickness _surfacePadding = new(8, 0);
 
     public TaskbarViewModel(
         IShellCommands shell,
@@ -35,6 +36,8 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         IAppLauncher launcher,
         IconCache icons,
         IWidgetRegistry widgets,
+        WidgetViewResolver widgetViews,
+        IUiDispatcher dispatcher,
         IServiceProvider services,
         ILoggerFactory loggerFactory,
         Action openControlCenter,
@@ -43,11 +46,12 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         _widgets = widgets;
         _services = services;
         _loggerFactory = loggerFactory;
+        _widgetViews = widgetViews;
         _logger = loggerFactory.CreateLogger<TaskbarViewModel>();
         _start = new StartSectionViewModel("start", shell);
         Apps = new AppsSectionViewModel("apps", tracker, switcher, launcher, icons, loggerFactory.CreateLogger<AppsSectionViewModel>());
         _tray = new SystemTraySectionViewModel("tray", shell);
-        _clock = new ClockSectionViewModel("clock", shell);
+        _clock = new ClockSectionViewModel("clock", shell, dispatcher);
 
         OpenControlCenterCommand = new RelayCommand(openControlCenter);
         OpenTaskManagerCommand = new RelayCommand(shell.OpenTaskManager);
@@ -64,14 +68,8 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     public ICommand OpenTaskManagerCommand { get; }
     public ICommand ExitCommand { get; }
 
-    public double ItemSpacing { get => _itemSpacing; private set => SetProperty(ref _itemSpacing, value); }
-
-    public Thickness SurfacePadding { get => _surfacePadding; private set => SetProperty(ref _surfacePadding, value); }
-
     public void Apply(SuperBarSettings settings)
     {
-        ItemSpacing = settings.Appearance.ItemSpacing;
-        SurfacePadding = new Thickness(settings.Appearance.EdgePadding, 0);
         Apps.SetPins(settings.PinnedApps);
         SyncWidgets(settings);
         SyncZone(LeftSections, settings, TaskbarZone.Left);
@@ -124,7 +122,7 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
             else
             {
                 var host = new WidgetHost(descriptor, instance, _services, _loggerFactory);
-                _widgetSections[instance.InstanceId] = new WidgetSectionViewModel("widget:" + instance.InstanceId, host);
+                _widgetSections[instance.InstanceId] = new WidgetSectionViewModel("widget:" + instance.InstanceId, host, _widgetViews);
             }
         }
 
@@ -195,5 +193,6 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         }
 
         _widgetSections.Clear();
+        _clock.Dispose();
     }
 }

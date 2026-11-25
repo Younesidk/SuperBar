@@ -1,15 +1,15 @@
-using Avalonia;
-using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SuperBar.Core.Runtime;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
 using SuperBar.Runtime.Services;
+using SuperBar.Runtime.Theming;
 using SuperBar.Runtime.ViewModels;
 using SuperBar.Runtime.Views;
+using SuperBar.Runtime.Widgets;
 using SuperBar.Widgets;
+using Windows.Graphics;
 
 namespace SuperBar.Runtime;
 
@@ -26,8 +26,10 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
     private readonly INativeTaskbarController _nativeTaskbar;
     private readonly IMonitorService _monitors;
     private readonly IWindowTracker _tracker;
+    private readonly IUiDispatcher _dispatcher;
+    private readonly IAppLifetime _lifetime;
     private readonly ILogger<TaskbarRuntime> _logger;
-    private readonly DispatcherTimer _displayDebounce;
+    private readonly IUiTimer _displayDebounce;
     private TaskbarViewModel? _viewModel;
     private TaskbarWindow? _window;
     private IAppBarRegistration? _appBar;
@@ -41,6 +43,8 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         IMonitorService monitors,
         IWindowTracker tracker,
         IShellEvents shellEvents,
+        IUiDispatcher dispatcher,
+        IAppLifetime lifetime,
         ILogger<TaskbarRuntime> logger)
     {
         _services = services;
@@ -49,18 +53,19 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         _nativeTaskbar = nativeTaskbar;
         _monitors = monitors;
         _tracker = tracker;
+        _dispatcher = dispatcher;
+        _lifetime = lifetime;
         _logger = logger;
 
-        _displayDebounce = new DispatcherTimer(TimeSpan.FromMilliseconds(300), DispatcherPriority.Normal, (_, _) => OnDisplaySettled());
-        _displayDebounce.Stop();
+        _displayDebounce = dispatcher.CreateTimer(TimeSpan.FromMilliseconds(300), OnDisplaySettled);
 
-        _settings.Changed += (_, e) => Dispatcher.UIThread.Post(() => OnSettingsChanged(e));
-        shellEvents.ExplorerRestarted += (_, _) => Dispatcher.UIThread.Post(OnExplorerRestarted);
-        shellEvents.DisplaySettingsChanged += (_, _) =>
+        _settings.Changed += (_, e) => _dispatcher.TryEnqueue(() => OnSettingsChanged(e));
+        shellEvents.ExplorerRestarted += (_, _) => _dispatcher.TryEnqueue(OnExplorerRestarted);
+        shellEvents.DisplaySettingsChanged += (_, _) => _dispatcher.Invoke(() =>
         {
             _displayDebounce.Stop();
             _displayDebounce.Start();
-        };
+        });
     }
 
     public bool IsEnabled { get; private set; }
@@ -69,7 +74,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
 
     public void Enable()
     {
-        Dispatcher.UIThread.VerifyAccess();
+        _dispatcher.VerifyAccess();
         if (IsEnabled || _disposed)
         {
             return;
@@ -83,16 +88,17 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         _viewModel.Apply(settings);
 
         var monitor = _monitors.GetPrimaryMonitor();
-        _window = new TaskbarWindow { DataContext = _viewModel };
+        var chrome = _services.GetRequiredService<IWindowChrome>();
+        _window = new TaskbarWindow(_viewModel, _services.GetRequiredService<TaskbarTheme>(), chrome, _services.GetRequiredService<ILogger<TaskbarWindow>>());
         _window.ApplyAppearance(settings.Appearance);
 
-        // Pre-place at the bottom edge so there is no flash elsewhere; the AppBar takes over immediately.
-        _window.Position = new PixelPoint(monitor.Bounds.Left, monitor.Bounds.Bottom - (int)Math.Round(settings.Appearance.Height * monitor.Scale));
-        _window.Width = monitor.Bounds.Width / monitor.Scale;
-        _window.Height = settings.Appearance.Height;
-        _window.Show();
+        // Pre-place at the bottom edge (physical pixels) so there is no flash elsewhere; the AppBar takes over immediately.
+        var height = (int)Math.Round(settings.Appearance.Height * monitor.Scale);
+        _window.AppWindow.MoveAndResize(new RectInt32(monitor.Bounds.Left, monitor.Bounds.Bottom - height, monitor.Bounds.Width, height));
 
+        // Like ShowActivated="False": appear without stealing focus from the user's current window.
         var hwnd = _window.Handle;
+        chrome.ShowWithoutActivation(hwnd);
         _tracker.Ignore(hwnd);
 
         // Free the native taskbar's work area BEFORE negotiating our position so we get the real bottom edge.
@@ -111,7 +117,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
 
     public void Disable()
     {
-        Dispatcher.UIThread.VerifyAccess();
+        _dispatcher.VerifyAccess();
         if (!IsEnabled)
         {
             return;
@@ -144,10 +150,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
     {
         _logger.LogInformation("Exit requested");
         Disable();
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-        {
-            desktop.Shutdown();
-        }
+        _lifetime.Shutdown();
     }
 
     private TaskbarViewModel CreateViewModel() => new(
@@ -157,6 +160,8 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         _services.GetRequiredService<IAppLauncher>(),
         _services.GetRequiredService<IconCache>(),
         _services.GetRequiredService<IWidgetRegistry>(),
+        _services.GetRequiredService<WidgetViewResolver>(),
+        _dispatcher,
         _services,
         _services.GetRequiredService<ILoggerFactory>(),
         openControlCenter: () => _services.GetRequiredService<IControlCenterLauncher>().Show(),
@@ -240,7 +245,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
             return;
         }
 
-        if (Dispatcher.UIThread.CheckAccess())
+        if (_dispatcher.HasThreadAccess)
         {
             Disable();
         }
@@ -250,6 +255,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         }
 
         _viewModel?.Dispose();
+        _displayDebounce.Dispose();
         _disposed = true;
     }
 }

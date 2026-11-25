@@ -1,10 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\build\SuperBar.WinUI.props" />
   <ItemGroup>
     <ProjectReference Include="..\SuperBar.Core\SuperBar.Core.csproj" />
     <ProjectReference Include="..\SuperBar.Widgets\SuperBar.Widgets.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Avalonia" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
   </ItemGroup>
 </Project>

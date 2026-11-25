@@ -1,9 +1,13 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\build\SuperBar.WinUI.props" />
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>SuperBar</AssemblyName>
     <RootNamespace>SuperBar.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Program.Main is hand-written: Velopack, crash safety nets and single-instance checks must run before WinUI starts. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\SuperBar.Core\SuperBar.Core.csproj" />
@@ -14,9 +18,6 @@
     <ProjectReference Include="..\SuperBar.ControlCenter\SuperBar.ControlCenter.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Avalonia" />
-    <PackageReference Include="Avalonia.Desktop" />
-    <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Velopack" />
   </ItemGroup>

@@ -1,7 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Reflection;
 using System.Windows.Input;
-using Avalonia.Threading;
+using Microsoft.UI.Xaml.Media;
 using SuperBar.Core.Mvvm;
 using SuperBar.Core.Runtime;
 using SuperBar.Core.Settings;
@@ -10,18 +11,18 @@ using SuperBar.Widgets;
 
 namespace SuperBar.ControlCenter.ViewModels;
 
-public sealed class ControlCenterViewModel : ObservableObject
+public sealed class ControlCenterViewModel : ObservableObject, IDisposable
 {
     private PageViewModel _selectedPage;
 
-    public ControlCenterViewModel(ISettingsService settings, ITaskbarRuntimeController runtime, IWidgetRegistry widgets, IAppPaths paths, IAppLauncher launcher)
+    public ControlCenterViewModel(ISettingsService settings, ITaskbarRuntimeController runtime, IWidgetRegistry widgets, IAppPaths paths, IAppLauncher launcher, IUiDispatcher dispatcher)
     {
-        Pages =
+        Pages = (PageViewModel[])
         [
             new GeneralPageViewModel(settings, runtime),
-            new AppearancePageViewModel(settings),
+            new AppearancePageViewModel(settings, dispatcher),
             new LayoutPageViewModel(settings, widgets),
-            new WidgetsPageViewModel(settings, widgets),
+            new WidgetsPageViewModel(settings, widgets, dispatcher),
             new ApplicationsPageViewModel(settings),
             new AboutPageViewModel(paths, launcher),
         ];
@@ -41,12 +42,24 @@ public sealed class ControlCenterViewModel : ObservableObject
             }
         }
     }
+
+    /// <summary>Detaches the pages from long-lived services when the window closes.</summary>
+    public void Dispose()
+    {
+        foreach (var page in Pages.OfType<IDisposable>())
+        {
+            page.Dispose();
+        }
+    }
 }
 
-public abstract class PageViewModel(string title, string glyph, string subtitle) : ObservableObject
+public abstract class PageViewModel(string title, string iconGlyph, string subtitle) : ObservableObject
 {
     public string Title { get; } = title;
-    public string Glyph { get; } = glyph;
+
+    /// <summary>Segoe Fluent Icons / Segoe MDL2 Assets code point shown in the navigation pane.</summary>
+    public string IconGlyph { get; } = iconGlyph;
+
     public string Subtitle { get; } = subtitle;
 
     public virtual void OnNavigatedTo()
@@ -54,22 +67,21 @@ public abstract class PageViewModel(string title, string glyph, string subtitle)
     }
 }
 
-/// <summary>Coalesces rapid edits (slider drags) into one settings write.</summary>
+/// <summary>Runs the most recently scheduled action once no new one has been scheduled for the delay (slider drags).</summary>
 internal sealed class Debouncer
 {
-    private readonly DispatcherTimer _timer;
+    private readonly IUiTimer _timer;
     private Action? _pending;
 
-    public Debouncer(TimeSpan delay)
+    public Debouncer(IUiDispatcher dispatcher, TimeSpan delay)
     {
-        _timer = new DispatcherTimer { Interval = delay };
-        _timer.Tick += (_, _) =>
+        _timer = dispatcher.CreateTimer(delay, () =>
         {
-            _timer.Stop();
+            _timer!.Stop();
             var action = _pending;
             _pending = null;
             action?.Invoke();
-        };
+        });
     }
 
     public void Run(Action action)
@@ -82,19 +94,19 @@ internal sealed class Debouncer
 
 // ------------------------------------------------------------------------------------------------
 
-public sealed class GeneralPageViewModel : PageViewModel
+public sealed class GeneralPageViewModel : PageViewModel, IDisposable
 {
     private readonly ISettingsService _settings;
     private readonly ITaskbarRuntimeController _runtime;
     private bool _hideNativeTaskbar;
 
     public GeneralPageViewModel(ISettingsService settings, ITaskbarRuntimeController runtime)
-        : base("General", "M3,3 H13 V13 H3 Z M6,6 H10 V10 H6 Z", "Turn SuperBar on or off and control how it replaces the Windows taskbar.")
+        : base("General", "\uE713", "Turn SuperBar on or off and control how it replaces the Windows taskbar.")
     {
         _settings = settings;
         _runtime = runtime;
         _hideNativeTaskbar = settings.Current.Behavior.HideNativeTaskbar;
-        runtime.StateChanged += (_, _) => OnPropertyChanged(nameof(IsSuperBarEnabled));
+        runtime.StateChanged += OnRuntimeStateChanged;
         ExitCommand = new RelayCommand(runtime.Exit);
         ResetCommand = new RelayCommand(() =>
         {
@@ -141,12 +153,19 @@ public sealed class GeneralPageViewModel : PageViewModel
     public ICommand ExitCommand { get; }
 
     public ICommand ResetCommand { get; }
+
+    private void OnRuntimeStateChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(IsSuperBarEnabled));
+
+    public void Dispose() => _runtime.StateChanged -= OnRuntimeStateChanged;
 }
 
 public sealed class AppearancePageViewModel : PageViewModel
 {
+    private static readonly string[] SwatchColors = ["#5B8CFF", "#8B6CFF", "#2FBF9B", "#F2A541", "#F2545B", "#E8E8EC"];
+
     private readonly ISettingsService _settings;
-    private readonly Debouncer _debounce = new(TimeSpan.FromMilliseconds(120));
+    private readonly Debouncer _debounce;
+    private Action<SuperBarSettings>? _pendingChanges;
     private double _height;
     private double _opacity;
     private double _cornerRadius;
@@ -155,10 +174,11 @@ public sealed class AppearancePageViewModel : PageViewModel
     private bool _useAcrylic;
     private string _accent;
 
-    public AppearancePageViewModel(ISettingsService settings)
-        : base("Appearance", "M8,2 A6,6 0 1 0 8,14 A3,3 0 0 1 8,8 A3,3 0 0 0 8,2 Z", "Size, transparency, corners and colors of the bar.")
+    public AppearancePageViewModel(ISettingsService settings, IUiDispatcher dispatcher)
+        : base("Appearance", "", "Size, transparency, corners and colors of the bar.")
     {
         _settings = settings;
+        _debounce = new Debouncer(dispatcher, TimeSpan.FromMilliseconds(120));
         var a = settings.Current.Appearance;
         _height = a.Height;
         _opacity = a.BackgroundOpacity;
@@ -174,22 +194,75 @@ public sealed class AppearancePageViewModel : PageViewModel
                 Accent = color;
             }
         });
+        AccentSwatches = SwatchColors.Select(hex => new AccentSwatchViewModel(hex, SetAccentCommand)).ToList();
     }
 
     public double MinHeight => AppearanceSettings.MinHeight;
     public double MaxHeight => AppearanceSettings.MaxHeight;
 
-    public IReadOnlyList<string> AccentSwatches { get; } = ["#5B8CFF", "#8B6CFF", "#2FBF9B", "#F2A541", "#F2545B", "#E8E8EC"];
+    public IReadOnlyList<AccentSwatchViewModel> AccentSwatches { get; }
 
     public ICommand SetAccentCommand { get; }
 
-    public double TaskbarHeight { get => _height; set { if (SetProperty(ref _height, Math.Round(value))) Push(s => s.Appearance.Height = _height); } }
+    public double TaskbarHeight
+    {
+        get => _height;
+        set
+        {
+            if (SetProperty(ref _height, Math.Round(value)))
+            {
+                OnPropertyChanged(nameof(TaskbarHeightLabel));
+                Push(s => s.Appearance.Height = _height);
+            }
+        }
+    }
 
-    public double BackgroundOpacity { get => _opacity; set { if (SetProperty(ref _opacity, value)) Push(s => s.Appearance.BackgroundOpacity = _opacity); } }
+    public string TaskbarHeightLabel => FormatPx(_height);
 
-    public double CornerRadius { get => _cornerRadius; set { if (SetProperty(ref _cornerRadius, Math.Round(value))) Push(s => s.Appearance.ItemCornerRadius = _cornerRadius); } }
+    public double BackgroundOpacity
+    {
+        get => _opacity;
+        set
+        {
+            if (SetProperty(ref _opacity, value))
+            {
+                OnPropertyChanged(nameof(BackgroundOpacityLabel));
+                Push(s => s.Appearance.BackgroundOpacity = _opacity);
+            }
+        }
+    }
 
-    public double ItemSpacing { get => _spacing; set { if (SetProperty(ref _spacing, Math.Round(value))) Push(s => s.Appearance.ItemSpacing = _spacing); } }
+    public string BackgroundOpacityLabel => _opacity.ToString("P0", CultureInfo.CurrentCulture);
+
+    public double CornerRadius
+    {
+        get => _cornerRadius;
+        set
+        {
+            if (SetProperty(ref _cornerRadius, Math.Round(value)))
+            {
+                OnPropertyChanged(nameof(CornerRadiusLabel));
+                Push(s => s.Appearance.ItemCornerRadius = _cornerRadius);
+            }
+        }
+    }
+
+    public string CornerRadiusLabel => FormatPx(_cornerRadius);
+
+    public double ItemSpacing
+    {
+        get => _spacing;
+        set
+        {
+            if (SetProperty(ref _spacing, Math.Round(value)))
+            {
+                OnPropertyChanged(nameof(ItemSpacingLabel));
+                Push(s => s.Appearance.ItemSpacing = _spacing);
+            }
+        }
+    }
+
+    public string ItemSpacingLabel => FormatPx(_spacing);
 
     public bool DarkTheme { get => _darkTheme; set { if (SetProperty(ref _darkTheme, value)) Push(s => s.Appearance.Theme = value ? ThemeMode.Dark : ThemeMode.Light); } }
 
@@ -197,7 +270,44 @@ public sealed class AppearancePageViewModel : PageViewModel
 
     public string Accent { get => _accent; set { if (SetProperty(ref _accent, value)) Push(s => s.Appearance.AccentColor = value); } }
 
-    private void Push(Action<SuperBarSettings> change) => _debounce.Run(() => _settings.Update(change));
+    internal static string FormatPx(double value) => string.Create(CultureInfo.CurrentCulture, $"{value:0} px");
+
+    /// <summary>
+    /// Queues a change and writes all queued changes together once edits pause, so a slider drag is one write and
+    /// quick successive edits of different settings (e.g. theme then accent) are combined, never dropped.
+    /// </summary>
+    private void Push(Action<SuperBarSettings> change)
+    {
+        _pendingChanges += change;
+        _debounce.Run(() =>
+        {
+            var changes = _pendingChanges;
+            _pendingChanges = null;
+            if (changes is not null)
+            {
+                _settings.Update(changes);
+            }
+        });
+    }
+}
+
+/// <summary>One accent color button: its own brush and command, so the template needs no ancestor binding.</summary>
+public sealed class AccentSwatchViewModel
+{
+    public AccentSwatchViewModel(string hex, ICommand selectCommand)
+    {
+        Hex = hex;
+        SelectCommand = selectCommand;
+        var c = ColorHex.ParseOrDefault(hex, new ArgbColor(0xFF, 0x80, 0x80, 0x80));
+        Brush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(c.A, c.R, c.G, c.B));
+    }
+
+    public string Hex { get; }
+
+    public SolidColorBrush Brush { get; }
+
+    /// <summary>Selects this color; the command parameter is <see cref="Hex"/>.</summary>
+    public ICommand SelectCommand { get; }
 }
 
 public sealed class LayoutPageViewModel : PageViewModel
@@ -206,7 +316,7 @@ public sealed class LayoutPageViewModel : PageViewModel
     private readonly IWidgetRegistry _widgets;
 
     public LayoutPageViewModel(ISettingsService settings, IWidgetRegistry widgets)
-        : base("Layout", "M2,4 H14 M2,8 H14 M2,12 H14", "Order the sections of the bar and choose the zone each one lives in.")
+        : base("Layout", "\uE8FD", "Order the sections of the bar and choose the zone each one lives in.")
     {
         _settings = settings;
         _widgets = widgets;
@@ -216,6 +326,9 @@ public sealed class LayoutPageViewModel : PageViewModel
     public ObservableCollection<LayoutItemViewModel> Sections { get; } = new();
 
     public IReadOnlyList<TaskbarZone> Zones { get; } = Enum.GetValues<TaskbarZone>();
+
+    /// <summary>Display names of <see cref="Zones"/>, in the same order (indexes match).</summary>
+    public IReadOnlyList<string> ZoneNames { get; } = Enum.GetNames<TaskbarZone>();
 
     public override void OnNavigatedTo() => Reload();
 
@@ -287,6 +400,36 @@ public sealed class LayoutItemViewModel : ObservableObject
     public ICommand MoveUpCommand { get; }
     public ICommand MoveDownCommand { get; }
 
+    /// <summary>The zones this section can be placed in (exposed per item, so the ComboBox needs no ancestor binding).</summary>
+    public IReadOnlyList<string> Zones => _owner.ZoneNames;
+
+    /// <summary>Index of <see cref="Zone"/> in <see cref="Zones"/>; bound two-way to the ComboBox.</summary>
+    public int ZoneIndex
+    {
+        get => IndexOf(_owner.Zones, _zone);
+        set
+        {
+            var zones = _owner.Zones;
+            if (value >= 0 && value < zones.Count)
+            {
+                Zone = zones[value];
+            }
+        }
+    }
+
+    private static int IndexOf(IReadOnlyList<TaskbarZone> zones, TaskbarZone zone)
+    {
+        for (var i = 0; i < zones.Count; i++)
+        {
+            if (zones[i] == zone)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     public TaskbarZone Zone
     {
         get => _zone;
@@ -294,6 +437,7 @@ public sealed class LayoutItemViewModel : ObservableObject
         {
             if (SetProperty(ref _zone, value))
             {
+                OnPropertyChanged(nameof(ZoneIndex));
                 _owner.SetZone(this, value);
             }
         }
@@ -304,18 +448,23 @@ public sealed class WidgetsPageViewModel : PageViewModel
 {
     private readonly ISettingsService _settings;
     private readonly IWidgetRegistry _registry;
+    private readonly IUiDispatcher _dispatcher;
 
-    public WidgetsPageViewModel(ISettingsService settings, IWidgetRegistry registry)
-        : base("Widgets", "M2,2 H7 V7 H2 Z M9,2 H14 V7 H9 Z M2,9 H7 V14 H2 Z M9,9 H14 V14 H9 Z", "Widgets live directly inside the bar. Enable them and size their slots.")
+    public WidgetsPageViewModel(ISettingsService settings, IWidgetRegistry registry, IUiDispatcher dispatcher)
+        : base("Widgets", "\uE71D", "Widgets live directly inside the bar. Enable them and size their slots.")
     {
         _settings = settings;
         _registry = registry;
+        _dispatcher = dispatcher;
         Reload();
     }
 
     public ObservableCollection<WidgetItemViewModel> Instances { get; } = new();
 
     public IReadOnlyList<WidgetDescriptor> AvailableTypes => _registry.All.ToList();
+
+    /// <summary>Bulleted names of <see cref="AvailableTypes"/>.</summary>
+    public IReadOnlyList<string> AvailableTypeLabels => _registry.All.Select(d => $"• {d.DisplayName}").ToList();
 
     public override void OnNavigatedTo() => Reload();
 
@@ -326,7 +475,7 @@ public sealed class WidgetsPageViewModel : PageViewModel
         {
             if (_registry.TryGet(w.TypeId, out var d))
             {
-                Instances.Add(new WidgetItemViewModel(_settings, w.InstanceId, d, w.Enabled, d.ResolveWidth(w.Width)));
+                Instances.Add(new WidgetItemViewModel(_settings, _dispatcher, w.InstanceId, d, w.Enabled, d.ResolveWidth(w.Width)));
             }
         }
     }
@@ -335,13 +484,14 @@ public sealed class WidgetsPageViewModel : PageViewModel
 public sealed class WidgetItemViewModel : ObservableObject
 {
     private readonly ISettingsService _settings;
-    private readonly Debouncer _debounce = new(TimeSpan.FromMilliseconds(120));
+    private readonly Debouncer _debounce;
     private bool _enabled;
     private double _width;
 
-    public WidgetItemViewModel(ISettingsService settings, string instanceId, WidgetDescriptor descriptor, bool enabled, double width)
+    public WidgetItemViewModel(ISettingsService settings, IUiDispatcher dispatcher, string instanceId, WidgetDescriptor descriptor, bool enabled, double width)
     {
         _settings = settings;
+        _debounce = new Debouncer(dispatcher, TimeSpan.FromMilliseconds(120));
         InstanceId = instanceId;
         Descriptor = descriptor;
         _enabled = enabled;
@@ -374,11 +524,14 @@ public sealed class WidgetItemViewModel : ObservableObject
         {
             if (SetProperty(ref _width, Math.Round(value)))
             {
+                OnPropertyChanged(nameof(WidthLabel));
                 var w = _width;
                 _debounce.Run(() => _settings.Update(s => Find(s)!.Width = w));
             }
         }
     }
+
+    public string WidthLabel => AppearancePageViewModel.FormatPx(_width);
 
     private WidgetInstanceSettings? Find(SuperBarSettings s) => s.Widgets.FirstOrDefault(x => x.InstanceId == InstanceId);
 }
@@ -386,7 +539,7 @@ public sealed class WidgetItemViewModel : ObservableObject
 public sealed class ApplicationsPageViewModel : PageViewModel
 {
     public ApplicationsPageViewModel(ISettingsService settings)
-        : base("Applications", "M3,2 H13 V14 H3 Z M3,5 H13", "Pinned applications shown on the bar.")
+        : base("Applications", "\uECAA", "Pinned applications shown on the bar.")
     {
         Settings = settings;
         Reload();
@@ -411,7 +564,7 @@ public sealed class ApplicationsPageViewModel : PageViewModel
 public sealed class AboutPageViewModel : PageViewModel
 {
     public AboutPageViewModel(IAppPaths paths, IAppLauncher launcher)
-        : base("About", "M8,2 A6,6 0 1 0 8.01,2 Z M8,7 V11 M8,5 V5.1", "Version, data locations and diagnostics.")
+        : base("About", "\uE946", "Version, data locations and diagnostics.")
     {
         DataDirectory = paths.DataDirectory;
         LogDirectory = paths.LogDirectory;
@@ -422,6 +575,9 @@ public sealed class AboutPageViewModel : PageViewModel
     public string Version { get; } = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.1.0";
     public string DataDirectory { get; }
     public string LogDirectory { get; }
+    public string VersionLabel => $"SuperBar {Version} - foundation milestone";
+    public string DataDirectoryLabel => $"Data: {DataDirectory}";
+    public string LogDirectoryLabel => $"Logs: {LogDirectory}";
     public ICommand OpenDataFolderCommand { get; }
     public ICommand OpenLogFolderCommand { get; }
 }

@@ -1,9 +1,9 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- UI-framework free on purpose: widget contracts, hosting and controllers are tested headlessly. Views live in SuperBar.Runtime. -->
   <ItemGroup>
     <ProjectReference Include="..\SuperBar.Core\SuperBar.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Avalonia" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
   </ItemGroup>
 </Project>

@@ -1,4 +1,3 @@
-using Avalonia.Controls;
 using Microsoft.Extensions.Logging;
 
 namespace SuperBar.Widgets;
@@ -10,8 +9,12 @@ namespace SuperBar.Widgets;
 /// </summary>
 public interface IWidget : IDisposable
 {
-    /// <summary>The visual hosted in the widget's taskbar slot. Created once.</summary>
-    Control View { get; }
+    /// <summary>
+    /// What the widget's taskbar slot shows. Created once. Either a ready-made UI element of the host framework,
+    /// or a UI-framework-free presentation model that the taskbar renders with a view registered for its type
+    /// (<c>AddWidgetView&lt;TModel&gt;</c> in SuperBar.Runtime). Models keep widgets testable without a UI thread.
+    /// </summary>
+    object View { get; }
 
     void Activate();
 

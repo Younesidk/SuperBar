@@ -1,6 +1,6 @@
-using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using SuperBar.Core.Runtime;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
 using SuperBar.Widgets;
@@ -90,7 +90,21 @@ public class WidgetHostTests
         host.Activate();
 
         Assert.Equal(WidgetState.Faulted, host.State);
-        Assert.IsType<TextBlock>(host.View);
+        var placeholder = Assert.IsType<WidgetFaultPlaceholder>(host.View);
+        Assert.Equal("Widget error", placeholder.Message);
+    }
+
+    [Fact]
+    public void A_widget_that_throws_on_activate_is_isolated_and_disposed()
+    {
+        var widget = new FakeWidget { ThrowOnActivate = true };
+        var host = Host(_ => widget);
+
+        host.Activate();
+
+        Assert.Equal(WidgetState.Faulted, host.State);
+        Assert.True(widget.IsDisposed);
+        Assert.IsType<WidgetFaultPlaceholder>(host.View);
     }
 
     [Fact]
@@ -120,6 +134,79 @@ public class WidgetHostTests
         widget.Dispose();
     }
 
+    [Fact]
+    public void System_resources_widget_runs_its_timer_only_while_active()
+    {
+        var metrics = new FakeMetrics();
+        var dispatcher = new FakeDispatcher();
+        var services = new ServiceCollection()
+            .AddSingleton<ISystemMetricsProvider>(metrics)
+            .AddSingleton<IUiDispatcher>(dispatcher)
+            .BuildServiceProvider();
+        var widget = (SystemResourcesWidget)SystemResourcesWidget.Descriptor.Factory(new WidgetContext("r", new Dictionary<string, string>(), services, NullLogger.Instance));
+        var timer = Assert.Single(dispatcher.Timers);
+
+        Assert.Equal(TimeSpan.FromSeconds(2), timer.Interval);
+        Assert.False(timer.IsRunning);
+
+        widget.Activate();
+        Assert.True(timer.IsRunning);
+        Assert.Equal(42, widget.Model.CpuPercent);
+        Assert.Equal("50%", widget.Model.MemoryText);
+        Assert.Contains("8.0 / 16.0 GB", widget.Model.ToolTip);
+
+        var before = metrics.Samples;
+        timer.Fire();
+        Assert.Equal(before + 1, metrics.Samples);
+
+        widget.Deactivate();
+        Assert.False(timer.IsRunning);
+
+        widget.Activate();
+        widget.Dispose();
+        Assert.False(timer.IsRunning);
+        Assert.True(timer.IsDisposed);
+    }
+
+    private sealed class FakeDispatcher : IUiDispatcher
+    {
+        public List<FakeTimer> Timers { get; } = new();
+
+        public bool HasThreadAccess => true;
+
+        public bool TryEnqueue(Action action)
+        {
+            action();
+            return true;
+        }
+
+        public IUiTimer CreateTimer(TimeSpan interval, Action tick)
+        {
+            var timer = new FakeTimer(interval, tick);
+            Timers.Add(timer);
+            return timer;
+        }
+    }
+
+    private sealed class FakeTimer(TimeSpan interval, Action tick) : IUiTimer
+    {
+        public TimeSpan Interval { get; set; } = interval;
+        public bool IsRunning { get; private set; }
+        public bool IsDisposed { get; private set; }
+
+        public void Start() => IsRunning = true;
+
+        public void Stop() => IsRunning = false;
+
+        public void Fire() => tick();
+
+        public void Dispose()
+        {
+            IsRunning = false;
+            IsDisposed = true;
+        }
+    }
+
     private sealed class FakeMetrics : ISystemMetricsProvider
     {
         public int Samples { get; private set; }
@@ -134,12 +221,13 @@ public class WidgetHostTests
 
 internal sealed class FakeWidget : IWidget
 {
-    public Control View { get; } = new Border();
+    public object View { get; } = new object();
+    public bool ThrowOnActivate { get; init; }
     public bool IsActive { get; private set; }
     public bool IsDisposed { get; private set; }
     public IReadOnlyDictionary<string, string> Options { get; private set; } = new Dictionary<string, string>();
 
-    public void Activate() => IsActive = true;
+    public void Activate() => IsActive = !ThrowOnActivate ? true : throw new InvalidOperationException("boom");
 
     public void Deactivate() => IsActive = false;
 

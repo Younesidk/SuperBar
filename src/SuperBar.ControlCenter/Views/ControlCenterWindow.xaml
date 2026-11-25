@@ -1,0 +1,419 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window x:Class="SuperBar.ControlCenter.Views.ControlCenterWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:SuperBar.ControlCenter.ViewModels"
+        xmlns:views="using:SuperBar.ControlCenter.Views"
+        xmlns:settings="using:SuperBar.Core.Settings"
+        Title="SuperBar Control Center">
+
+  <Grid x:Name="Root" RequestedTheme="Dark">
+    <Grid.Resources>
+      <!-- Typography and cards -->
+      <Style x:Key="PageTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="26" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+      </Style>
+      <Style x:Key="PageSubtitle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,4,0,20" />
+      </Style>
+      <Style x:Key="Card" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="18,14" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+      </Style>
+      <Style x:Key="Label" TargetType="TextBlock">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+      </Style>
+      <Style x:Key="Hint" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+      </Style>
+      <!-- Amber "Planned / not implemented yet" banner -->
+      <Style x:Key="NotImplemented" TargetType="Border">
+        <Setter Property="Background" Value="#2A2414" />
+        <Setter Property="BorderBrush" Value="#5A4A1E" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Margin" Value="0,8,0,8" />
+      </Style>
+      <!-- Switches sit flush right in each card: no On/Off text, no reserved minimum width. -->
+      <Style x:Key="CardToggle" TargetType="ToggleSwitch">
+        <Setter Property="OnContent" Value="" />
+        <Setter Property="OffContent" Value="" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="HorizontalAlignment" Value="Right" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+      </Style>
+      <!-- Round accent swatch; keeps its own color on hover (a ring shows instead). -->
+      <Style x:Key="SwatchButton" TargetType="Button">
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Grid x:Name="RootGrid">
+                <VisualStateManager.VisualStateGroups>
+                  <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                      <VisualState.Setters>
+                        <Setter Target="Ring.BorderBrush" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                      <VisualState.Setters>
+                        <Setter Target="Ring.BorderBrush" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Setter Target="RootGrid.Opacity" Value="0.85" />
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                      <VisualState.Setters>
+                        <Setter Target="RootGrid.Opacity" Value="0.4" />
+                      </VisualState.Setters>
+                    </VisualState>
+                  </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <Border x:Name="Ring" CornerRadius="14" BorderThickness="2" BorderBrush="Transparent"
+                        Background="{TemplateBinding Background}" />
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <!-- General -->
+      <DataTemplate x:Key="GeneralPageTemplate" x:DataType="vm:GeneralPageViewModel">
+        <StackPanel>
+          <Border Style="{StaticResource Card}">
+            <Grid ColumnSpacing="16">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Style="{StaticResource Label}" Text="SuperBar is active" />
+                <TextBlock Style="{StaticResource Hint}" Text="When off, SuperBar releases its screen space and the Windows taskbar is restored. The app keeps running so you can turn it back on here." />
+              </StackPanel>
+              <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsOn="{x:Bind IsSuperBarEnabled, Mode=TwoWay}"
+                            AutomationProperties.Name="SuperBar is active" />
+            </Grid>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <Grid ColumnSpacing="16">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Style="{StaticResource Label}" Text="Hide the Windows taskbar while SuperBar runs" />
+                <TextBlock Style="{StaticResource Hint}" Text="Temporarily switches the native taskbar to auto-hide and hides it. Your original setting is saved and restored on exit, and on the next start if SuperBar ever closes unexpectedly." />
+              </StackPanel>
+              <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsOn="{x:Bind HideNativeTaskbar, Mode=TwoWay}"
+                            AutomationProperties.Name="Hide the Windows taskbar while SuperBar runs" />
+            </Grid>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <Grid ColumnSpacing="16">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Style="{StaticResource Label}" Text="Start with Windows" />
+                <TextBlock Style="{StaticResource Hint}" Text="Not implemented yet - planned together with the Velopack installer." />
+              </StackPanel>
+              <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsEnabled="False"
+                            AutomationProperties.Name="Start with Windows" />
+            </Grid>
+          </Border>
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+            <Button Content="Reset all settings" Command="{x:Bind ResetCommand}" />
+            <Button Content="Exit SuperBar" Command="{x:Bind ExitCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </DataTemplate>
+
+      <!-- Appearance -->
+      <DataTemplate x:Key="AppearancePageTemplate" x:DataType="vm:AppearancePageViewModel">
+        <StackPanel>
+          <Border Style="{StaticResource Card}">
+            <StackPanel Spacing="4">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource Label}" Text="Bar height" />
+                <TextBlock Grid.Column="1" Style="{StaticResource Hint}" Text="{x:Bind TaskbarHeightLabel, Mode=OneWay}" />
+              </Grid>
+              <Slider Minimum="{x:Bind MinHeight}" Maximum="{x:Bind MaxHeight}" TickFrequency="2" SnapsTo="Ticks" StepFrequency="2"
+                      Value="{x:Bind TaskbarHeight, Mode=TwoWay}" AutomationProperties.Name="Bar height" />
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel Spacing="4">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource Label}" Text="Background opacity" />
+                <TextBlock Grid.Column="1" Style="{StaticResource Hint}" Text="{x:Bind BackgroundOpacityLabel, Mode=OneWay}" />
+              </Grid>
+              <Slider Minimum="0.2" Maximum="1" StepFrequency="0.01" Value="{x:Bind BackgroundOpacity, Mode=TwoWay}"
+                      AutomationProperties.Name="Background opacity" />
+              <Grid Margin="0,6,0,0" ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource Hint}" Text="Blur the desktop behind the bar (acrylic)" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsOn="{x:Bind UseAcrylic, Mode=TwoWay}"
+                              AutomationProperties.Name="Blur the desktop behind the bar" />
+              </Grid>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel Spacing="4">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource Label}" Text="Item corner radius" />
+                <TextBlock Grid.Column="1" Style="{StaticResource Hint}" Text="{x:Bind CornerRadiusLabel, Mode=OneWay}" />
+              </Grid>
+              <Slider Minimum="0" Maximum="24" StepFrequency="1" Value="{x:Bind CornerRadius, Mode=TwoWay}"
+                      AutomationProperties.Name="Item corner radius" />
+              <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource Label}" Text="Item spacing" />
+                <TextBlock Grid.Column="1" Style="{StaticResource Hint}" Text="{x:Bind ItemSpacingLabel, Mode=OneWay}" />
+              </Grid>
+              <Slider Minimum="0" Maximum="24" StepFrequency="1" Value="{x:Bind ItemSpacing, Mode=TwoWay}"
+                      AutomationProperties.Name="Item spacing" />
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel Spacing="10">
+              <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource Label}" Text="Dark theme" />
+                <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsOn="{x:Bind DarkTheme, Mode=TwoWay}"
+                              AutomationProperties.Name="Dark theme" />
+              </Grid>
+              <TextBlock Style="{StaticResource Label}" Text="Accent color" />
+              <ItemsControl ItemsSource="{x:Bind AccentSwatches}" IsTabStop="False">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="8" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:AccentSwatchViewModel">
+                    <Button Style="{StaticResource SwatchButton}"
+                            Background="{x:Bind Brush}"
+                            Command="{x:Bind SelectCommand}"
+                            CommandParameter="{x:Bind Hex}"
+                            ToolTipService.ToolTip="{x:Bind Hex}"
+                            AutomationProperties.Name="{x:Bind Hex}" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </DataTemplate>
+
+      <!-- Layout -->
+      <DataTemplate x:Key="LayoutPageTemplate" x:DataType="vm:LayoutPageViewModel">
+        <StackPanel>
+          <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10"
+                     Text="Sections are drawn left to right within their zone. The right zone stays anchored to the screen edge; the center zone is centered on the bar." />
+          <ItemsControl ItemsSource="{x:Bind Sections}" IsTabStop="False">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:LayoutItemViewModel">
+                <Border Style="{StaticResource Card}" Padding="14,8">
+                  <Grid ColumnSpacing="6">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Label}" Text="{x:Bind Name}" />
+                    <ComboBox Grid.Column="1" Width="120" VerticalAlignment="Center"
+                              ItemsSource="{x:Bind Zones}"
+                              SelectedIndex="{x:Bind ZoneIndex, Mode=TwoWay}"
+                              AutomationProperties.Name="Zone" />
+                    <Button Grid.Column="2" Content="Up" Command="{x:Bind MoveUpCommand}" />
+                    <Button Grid.Column="3" Content="Down" Command="{x:Bind MoveDownCommand}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Border Style="{StaticResource NotImplemented}">
+            <TextBlock Style="{StaticResource Hint}" Text="Planned: drag-and-drop reordering on the bar itself, adding/removing sections, and per-monitor layouts." />
+          </Border>
+        </StackPanel>
+      </DataTemplate>
+
+      <!-- Widgets -->
+      <DataTemplate x:Key="WidgetsPageTemplate" x:DataType="vm:WidgetsPageViewModel">
+        <StackPanel>
+          <ItemsControl ItemsSource="{x:Bind Instances}" IsTabStop="False">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:WidgetItemViewModel">
+                <Border Style="{StaticResource Card}">
+                  <StackPanel Spacing="6">
+                    <Grid ColumnSpacing="16">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <StackPanel>
+                        <TextBlock Style="{StaticResource Label}" Text="{x:Bind DisplayName}" />
+                        <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" />
+                      </StackPanel>
+                      <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsOn="{x:Bind Enabled, Mode=TwoWay}"
+                                    AutomationProperties.Name="{x:Bind DisplayName}" />
+                    </Grid>
+                    <Grid Margin="0,6,0,0">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Style="{StaticResource Hint}" Text="Slot width" />
+                      <TextBlock Grid.Column="1" Style="{StaticResource Hint}" Text="{x:Bind WidthLabel, Mode=OneWay}" />
+                    </Grid>
+                    <Slider Minimum="{x:Bind MinWidth}" Maximum="{x:Bind MaxWidth}" StepFrequency="1"
+                            Value="{x:Bind Width, Mode=TwoWay}" AutomationProperties.Name="Slot width" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Style="{StaticResource Label}" Text="Available widget types" Margin="0,16,0,8" />
+          <ItemsControl ItemsSource="{x:Bind AvailableTypeLabels}" IsTabStop="False">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <TextBlock Style="{StaticResource Hint}" Text="{x:Bind}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Border Style="{StaticResource NotImplemented}">
+            <TextBlock Style="{StaticResource Hint}" Text="Planned: adding multiple widget instances, per-widget settings, and more widget types (calendar, weather, media, session statistics)." />
+          </Border>
+        </StackPanel>
+      </DataTemplate>
+
+      <!-- Applications -->
+      <DataTemplate x:Key="ApplicationsPageTemplate" x:DataType="vm:ApplicationsPageViewModel">
+        <StackPanel>
+          <ItemsControl ItemsSource="{x:Bind Pinned}" IsTabStop="False">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="settings:PinnedApp">
+                <Border Style="{StaticResource Card}" Padding="14,10">
+                  <StackPanel>
+                    <TextBlock Style="{StaticResource Label}" Text="{x:Bind DisplayName}" />
+                    <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Path}" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Border Style="{StaticResource NotImplemented}">
+            <TextBlock Style="{StaticResource Hint}" Text="Planned: pin/unpin from the bar and from here, drag to reorder, import pins from the Windows taskbar, and resolving .lnk shortcuts to match running apps." />
+          </Border>
+        </StackPanel>
+      </DataTemplate>
+
+      <!-- About -->
+      <DataTemplate x:Key="AboutPageTemplate" x:DataType="vm:AboutPageViewModel">
+        <StackPanel>
+          <Border Style="{StaticResource Card}">
+            <StackPanel Spacing="6">
+              <TextBlock Style="{StaticResource Label}" Text="{x:Bind VersionLabel}" />
+              <TextBlock Style="{StaticResource Hint}" Text="{x:Bind DataDirectoryLabel}" IsTextSelectionEnabled="True" />
+              <TextBlock Style="{StaticResource Hint}" Text="{x:Bind LogDirectoryLabel}" IsTextSelectionEnabled="True" />
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                <Button Content="Open data folder" Command="{x:Bind OpenDataFolderCommand}" />
+                <Button Content="Open log folder" Command="{x:Bind OpenLogFolderCommand}" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel Spacing="4">
+              <TextBlock Style="{StaticResource Label}" Text="If the Windows taskbar ever stays hidden" />
+              <TextBlock Style="{StaticResource Hint}" IsTextSelectionEnabled="True"
+                         Text="Start SuperBar again (it restores the taskbar automatically), or run:  SuperBar.exe --restore-taskbar" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </DataTemplate>
+
+      <views:ControlCenterPageTemplateSelector x:Key="PageTemplateSelector"
+                                               General="{StaticResource GeneralPageTemplate}"
+                                               Appearance="{StaticResource AppearancePageTemplate}"
+                                               Layout="{StaticResource LayoutPageTemplate}"
+                                               Widgets="{StaticResource WidgetsPageTemplate}"
+                                               Applications="{StaticResource ApplicationsPageTemplate}"
+                                               About="{StaticResource AboutPageTemplate}" />
+    </Grid.Resources>
+
+    <NavigationView x:Name="Navigation"
+                    PaneDisplayMode="Left"
+                    IsBackButtonVisible="Collapsed"
+                    IsSettingsVisible="False"
+                    IsPaneToggleButtonVisible="False"
+                    OpenPaneLength="232"
+                    MenuItemsSource="{x:Bind ViewModel.Pages}"
+                    SelectionChanged="OnNavigationSelectionChanged">
+      <NavigationView.PaneHeader>
+        <StackPanel Margin="16,12,0,18" Spacing="2">
+          <TextBlock Text="SuperBar" FontSize="18" FontWeight="SemiBold" />
+          <TextBlock Text="Control Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+      </NavigationView.PaneHeader>
+      <NavigationView.MenuItemTemplate>
+        <DataTemplate x:DataType="vm:PageViewModel">
+          <NavigationViewItem Content="{x:Bind Title}" AutomationProperties.Name="{x:Bind Title}">
+            <NavigationViewItem.Icon>
+              <FontIcon Glyph="{x:Bind IconGlyph}" />
+            </NavigationViewItem.Icon>
+          </NavigationViewItem>
+        </DataTemplate>
+      </NavigationView.MenuItemTemplate>
+
+      <ScrollViewer HorizontalScrollMode="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="36,28,36,28" MaxWidth="760" HorizontalAlignment="Left">
+          <TextBlock Style="{StaticResource PageTitle}" Text="{x:Bind ViewModel.SelectedPage.Title, Mode=OneWay}" />
+          <TextBlock Style="{StaticResource PageSubtitle}" Text="{x:Bind ViewModel.SelectedPage.Subtitle, Mode=OneWay}" />
+          <ContentControl Content="{x:Bind ViewModel.SelectedPage, Mode=OneWay}"
+                          ContentTemplateSelector="{StaticResource PageTemplateSelector}"
+                          HorizontalContentAlignment="Stretch"
+                          IsTabStop="False" />
+        </StackPanel>
+      </ScrollViewer>
+    </NavigationView>
+  </Grid>
+</Window>

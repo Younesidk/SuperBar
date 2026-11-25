@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using SuperBar.ControlCenter.ViewModels;
 using SuperBar.ControlCenter.Views;
@@ -10,13 +9,13 @@ using SuperBar.Widgets;
 namespace SuperBar.ControlCenter;
 
 /// <summary>Opens the (single) Control Center window. Separate from the taskbar runtime; it only edits settings.</summary>
-public sealed class ControlCenterService(IServiceProvider services) : IControlCenterLauncher
+public sealed class ControlCenterService(IServiceProvider services, IUiDispatcher dispatcher) : IControlCenterLauncher
 {
     private ControlCenterWindow? _window;
 
     public void Show()
     {
-        Dispatcher.UIThread.VerifyAccess();
+        dispatcher.VerifyAccess();
         if (_window is not null)
         {
             _window.Activate();
@@ -28,12 +27,19 @@ public sealed class ControlCenterService(IServiceProvider services) : IControlCe
             services.GetRequiredService<ITaskbarRuntimeController>(),
             services.GetRequiredService<IWidgetRegistry>(),
             services.GetRequiredService<IAppPaths>(),
-            services.GetRequiredService<IAppLauncher>());
+            services.GetRequiredService<IAppLauncher>(),
+            dispatcher);
 
-        _window = new ControlCenterWindow { DataContext = vm };
-        _window.Closed += (_, _) => _window = null;
-        _window.Show();
-        _window.Activate();
+        var window = new ControlCenterWindow(vm, services.GetRequiredService<IWindowChrome>());
+        window.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_window, window))
+            {
+                _window = null;
+            }
+        };
+        _window = window;
+        window.Activate();
     }
 }
 

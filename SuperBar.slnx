@@ -1,14 +1,48 @@
 <Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="ARM64" />
+  </Configurations>
   <Folder Name="/src/">
-    <Project Path="src/SuperBar.App/SuperBar.App.csproj" />
-    <Project Path="src/SuperBar.ControlCenter/SuperBar.ControlCenter.csproj" />
-    <Project Path="src/SuperBar.Core/SuperBar.Core.csproj" />
-    <Project Path="src/SuperBar.Infrastructure/SuperBar.Infrastructure.csproj" />
-    <Project Path="src/SuperBar.Runtime/SuperBar.Runtime.csproj" />
-    <Project Path="src/SuperBar.Widgets/SuperBar.Widgets.csproj" />
-    <Project Path="src/SuperBar.Windows/SuperBar.Windows.csproj" />
+    <!-- WinUI 3 projects are architecture-specific (self-contained Windows App SDK): "Any CPU" builds them as x64. -->
+    <Project Path="src/SuperBar.App/SuperBar.App.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+    <Project Path="src/SuperBar.ControlCenter/SuperBar.ControlCenter.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+    <Project Path="src/SuperBar.Runtime/SuperBar.Runtime.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+    <!-- Pure projects are architecture-neutral. -->
+    <Project Path="src/SuperBar.Core/SuperBar.Core.csproj">
+      <Platform Solution="*|x64" Project="Any CPU" />
+      <Platform Solution="*|ARM64" Project="Any CPU" />
+    </Project>
+    <Project Path="src/SuperBar.Infrastructure/SuperBar.Infrastructure.csproj">
+      <Platform Solution="*|x64" Project="Any CPU" />
+      <Platform Solution="*|ARM64" Project="Any CPU" />
+    </Project>
+    <Project Path="src/SuperBar.Widgets/SuperBar.Widgets.csproj">
+      <Platform Solution="*|x64" Project="Any CPU" />
+      <Platform Solution="*|ARM64" Project="Any CPU" />
+    </Project>
+    <Project Path="src/SuperBar.Windows/SuperBar.Windows.csproj">
+      <Platform Solution="*|x64" Project="Any CPU" />
+      <Platform Solution="*|ARM64" Project="Any CPU" />
+    </Project>
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/SuperBar.Tests/SuperBar.Tests.csproj" />
+    <Project Path="tests/SuperBar.Tests/SuperBar.Tests.csproj">
+      <Platform Solution="*|x64" Project="Any CPU" />
+      <Platform Solution="*|ARM64" Project="Any CPU" />
+    </Project>
   </Folder>
 </Solution>

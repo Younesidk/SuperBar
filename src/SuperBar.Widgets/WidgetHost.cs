@@ -1,4 +1,3 @@
-using Avalonia.Controls;
 using Microsoft.Extensions.Logging;
 using SuperBar.Core.Settings;
 
@@ -23,7 +22,7 @@ public sealed class WidgetHost : IDisposable
     private readonly ILogger _logger;
     private WidgetInstanceSettings _settings;
     private IWidget? _widget;
-    private Control? _faultView;
+    private WidgetFaultPlaceholder? _faultView;
 
     public WidgetHost(WidgetDescriptor descriptor, WidgetInstanceSettings settings, IServiceProvider services, ILoggerFactory loggerFactory)
     {
@@ -41,8 +40,11 @@ public sealed class WidgetHost : IDisposable
 
     public double Width => Descriptor.ResolveWidth(_settings.Width);
 
-    /// <summary>The visual for the taskbar slot. Accessing it creates the widget on first use.</summary>
-    public Control View
+    /// <summary>
+    /// The content of the taskbar slot (see <see cref="IWidget.View"/>), or a <see cref="WidgetFaultPlaceholder"/>
+    /// once the widget has faulted. Accessing it creates the widget on first use.
+    /// </summary>
+    public object View
     {
         get
         {
@@ -134,13 +136,7 @@ public sealed class WidgetHost : IDisposable
         }
 
         _widget = null;
-        _faultView ??= new TextBlock
-        {
-            Text = "Widget error",
-            Classes = { "sb-subtle" },
-            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-        };
+        _faultView ??= new WidgetFaultPlaceholder(Descriptor.DisplayName);
         State = WidgetState.Faulted;
     }
 
@@ -159,4 +155,15 @@ public sealed class WidgetHost : IDisposable
         _widget = null;
         State = WidgetState.Disposed;
     }
+}
+
+/// <summary>
+/// Shown in place of a widget that threw. A plain model (no UI types), so fault isolation works and is testable
+/// without a UI thread; the taskbar renders it as a subtle "Widget error" label.
+/// </summary>
+public sealed class WidgetFaultPlaceholder(string widgetName)
+{
+    public string WidgetName { get; } = widgetName;
+
+    public string Message => "Widget error";
 }

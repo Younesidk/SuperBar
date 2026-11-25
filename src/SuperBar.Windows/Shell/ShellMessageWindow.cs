@@ -10,7 +10,7 @@ namespace SuperBar.Windows.Shell;
 /// A hidden, never-shown top-level window that receives shell broadcasts
 /// ("TaskbarCreated", WM_DISPLAYCHANGE) and shell-hook notifications for window tracking.
 /// Message-only windows (HWND_MESSAGE) cannot be used because they do not receive broadcasts.
-/// Must be created on the UI thread so messages are pumped by the Avalonia dispatcher loop.
+/// Must be created on the UI thread so messages are pumped by the UI framework's message loop.
 /// </summary>
 internal sealed class ShellMessageWindow : IShellEvents, IDisposable
 {

@@ -162,6 +162,30 @@ internal struct MEMORYSTATUSEX
     public ulong ullAvailExtendedVirtual;
 }
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct POINT
+{
+    public int X;
+    public int Y;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct STYLESTRUCT
+{
+    public uint styleOld;
+    public uint styleNew;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct MINMAXINFO
+{
+    public POINT ptReserved;
+    public POINT ptMaxSize;
+    public POINT ptMaxPosition;
+    public POINT ptMinTrackSize;
+    public POINT ptMaxTrackSize;
+}
+
 internal delegate nint WndProc(nint hWnd, uint msg, nint wParam, nint lParam);
 
 internal delegate nint SubclassProc(nint hWnd, uint msg, nint wParam, nint lParam, nuint uIdSubclass, nuint dwRefData);
@@ -202,6 +226,8 @@ internal static class NativeMethods
     public const uint WM_GETICON = 0x007F;
     public const uint WM_SETTINGCHANGE = 0x001A;
     public const uint WM_DPICHANGED = 0x02E0;
+    public const uint WM_GETMINMAXINFO = 0x0024;
+    public const uint WM_STYLECHANGING = 0x007C;
     public const uint WM_QUERYENDSESSION = 0x0011;
     public const uint WM_ENDSESSION = 0x0016;
 
@@ -223,6 +249,14 @@ internal static class NativeMethods
     public const long WS_EX_APPWINDOW = 0x00040000;
     public const long WS_EX_NOACTIVATE = 0x08000000;
     public const uint WS_POPUP = 0x80000000;
+    public const long WS_CAPTION = 0x00C00000;
+    public const long WS_THICKFRAME = 0x00040000;
+    public const long WS_SYSMENU = 0x00080000;
+    public const long WS_MINIMIZEBOX = 0x00020000;
+    public const long WS_MAXIMIZEBOX = 0x00010000;
+    public const long WS_EX_WINDOWEDGE = 0x00000100;
+    public const long WS_EX_CLIENTEDGE = 0x00000200;
+    public const long WS_EX_DLGMODALFRAME = 0x00000001;
     public const uint GW_OWNER = 4;
 
     // --- ShowWindow / SetWindowPos ----------------------------------------------------------
@@ -238,6 +272,8 @@ internal static class NativeMethods
     public const uint SWP_NOMOVE = 0x0002;
     public const uint SWP_NOACTIVATE = 0x0010;
     public const uint SWP_SHOWWINDOW = 0x0040;
+    public const uint SWP_NOZORDER = 0x0004;
+    public const uint SWP_FRAMECHANGED = 0x0020;
 
     // --- Icons -------------------------------------------------------------------------------
     public const int ICON_SMALL = 0;
@@ -251,6 +287,10 @@ internal static class NativeMethods
 
     // --- Misc -------------------------------------------------------------------------------
     public const int DWMWA_CLOAKED = 14;
+    public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    public const int DWMWA_BORDER_COLOR = 34;
+    public const int DWMWCP_DONOTROUND = 1;
+    public const uint DWMWA_COLOR_NONE = 0xFFFFFFFE;
     public const uint MONITORINFOF_PRIMARY = 1;
     public const uint MONITOR_DEFAULTTOPRIMARY = 1;
     public const int MDT_EFFECTIVE_DPI = 0;
@@ -414,6 +454,18 @@ internal static class NativeMethods
 
     [DllImport("dwmapi.dll")]
     public static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmSetWindowAttribute(nint hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmSetWindowAttribute(nint hwnd, int dwAttribute, ref uint pvAttribute, int cbAttribute);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    public static extern nint SetWindowLongPtr(nint hWnd, int nIndex, nint dwNewLong);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(nint hwnd);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern nint OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, uint dwProcessId);

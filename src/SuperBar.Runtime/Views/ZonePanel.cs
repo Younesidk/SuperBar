@@ -1,7 +1,9 @@
-using Avalonia;
-using Avalonia.Controls;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using SuperBar.Core.Layout;
 using SuperBar.Core.Settings;
+using Windows.Foundation;
 
 namespace SuperBar.Runtime.Views;
 
@@ -11,17 +13,23 @@ namespace SuperBar.Runtime.Views;
 /// </summary>
 public sealed class ZonePanel : Panel
 {
-    public static readonly AttachedProperty<TaskbarZone> ZoneProperty =
-        AvaloniaProperty.RegisterAttached<ZonePanel, Control, TaskbarZone>("Zone");
+    public static readonly DependencyProperty ZoneProperty = DependencyProperty.RegisterAttached(
+        "Zone",
+        typeof(TaskbarZone),
+        typeof(ZonePanel),
+        new PropertyMetadata(TaskbarZone.Left, OnZoneChanged));
 
-    static ZonePanel()
+    public static TaskbarZone GetZone(UIElement element) => (TaskbarZone)element.GetValue(ZoneProperty);
+
+    public static void SetZone(UIElement element, TaskbarZone value) => element.SetValue(ZoneProperty, value);
+
+    private static void OnZoneChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        AffectsParentMeasure<ZonePanel>(ZoneProperty);
+        if (d is UIElement element && VisualTreeHelper.GetParent(element) is ZonePanel panel)
+        {
+            panel.InvalidateMeasure();
+        }
     }
-
-    public static TaskbarZone GetZone(Control control) => control.GetValue(ZoneProperty);
-
-    public static void SetZone(Control control, TaskbarZone value) => control.SetValue(ZoneProperty, value);
 
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -38,7 +46,7 @@ public sealed class ZonePanel : Panel
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        Control? left = null, center = null, right = null;
+        UIElement? left = null, center = null, right = null;
         foreach (var child in Children)
         {
             switch (GetZone(child))

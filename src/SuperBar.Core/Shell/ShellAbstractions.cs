@@ -166,3 +166,24 @@ public interface ISystemMetricsProvider
     /// <summary>Samples CPU (delta since the previous call) and memory usage. Cheap; no background threads.</summary>
     SystemResourceSnapshot Sample();
 }
+
+/// <summary>
+/// Win32 window-chrome tweaks the UI framework cannot express. Keeps P/Invoke out of the UI projects:
+/// they pass the native handle of their window and never touch Win32 themselves.
+/// </summary>
+public interface IWindowChrome
+{
+    /// <summary>
+    /// Turns a top-level window into a shell surface such as the taskbar: a tool window (never in Alt+Tab, Win+Tab or
+    /// the taskbar), no caption or sizing frame, no Windows 11 rounded corners or DWM border, and no minimum-size clamp
+    /// (so the AppBar can size it down to <c>AppearanceSettings.MinHeight</c> at any DPI).
+    /// The window stays activatable, so clicks, flyouts and <c>SetForegroundWindow</c> keep working.
+    /// </summary>
+    void ApplyShellSurfaceStyle(nint windowHandle);
+
+    /// <summary>Shows the window without activating it or stealing focus (SW_SHOWNOACTIVATE).</summary>
+    void ShowWithoutActivation(nint windowHandle);
+
+    /// <summary>The window's DPI scale (1.0 = 96 DPI).</summary>
+    double GetScale(nint windowHandle);
+}

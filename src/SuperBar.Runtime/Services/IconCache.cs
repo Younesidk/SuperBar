@@ -1,19 +1,23 @@
-using System.Runtime.InteropServices;
-using Avalonia;
-using Avalonia.Media.Imaging;
-using Avalonia.Platform;
+using System.Runtime.InteropServices.WindowsRuntime;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+using SuperBar.Core.Imaging;
 using SuperBar.Core.Shell;
 
 namespace SuperBar.Runtime.Services;
 
-/// <summary>Converts shell icons to Avalonia bitmaps once and keeps them for reuse.</summary>
+/// <summary>
+/// Converts shell icons to WinUI bitmaps once and keeps them for reuse. Synchronous on purpose so
+/// <c>AppsSectionViewModel.Rebuild</c> stays synchronous and race-free. UI thread only.
+/// </summary>
 public sealed class IconCache(IIconProvider provider) : IDisposable
 {
     private const int IconPixelSize = 48; // crisp at up to 150% scaling for a 32 DIP icon
-    private readonly Dictionary<string, Bitmap?> _byPath = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<nint, Bitmap?> _byWindow = new();
+    private const int MaxWindowIcons = 256;
+    private readonly Dictionary<string, ImageSource?> _byPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<nint, ImageSource?> _byWindow = new();
 
-    public Bitmap? ForFile(string path)
+    public ImageSource? ForFile(string path)
     {
         if (!_byPath.TryGetValue(path, out var bitmap))
         {
@@ -24,11 +28,11 @@ public sealed class IconCache(IIconProvider provider) : IDisposable
         return bitmap;
     }
 
-    public Bitmap? ForWindow(nint hwnd)
+    public ImageSource? ForWindow(nint hwnd)
     {
         if (!_byWindow.TryGetValue(hwnd, out var bitmap))
         {
-            if (_byWindow.Count > 256)
+            if (_byWindow.Count >= MaxWindowIcons)
             {
                 _byWindow.Clear();
             }
@@ -40,38 +44,30 @@ public sealed class IconCache(IIconProvider provider) : IDisposable
         return bitmap;
     }
 
-    public static Bitmap? ToBitmap(IconPixels? pixels)
+    /// <summary>
+    /// <see cref="IIconProvider"/> yields straight-alpha BGRA, but <see cref="WriteableBitmap"/> expects premultiplied
+    /// BGRA. Copying straight alpha as-is draws dark fringes around anti-aliased icon edges, so premultiply here.
+    /// </summary>
+    public static WriteableBitmap? ToBitmap(IconPixels? pixels)
     {
-        if (pixels is null)
+        if (pixels is null || pixels.Width <= 0 || pixels.Height <= 0 || pixels.Bgra.Length < pixels.Width * pixels.Height * 4)
         {
             return null;
         }
 
-        var handle = GCHandle.Alloc(pixels.Bgra, GCHandleType.Pinned);
-        try
+        var premultiplied = BgraPixels.Premultiply(pixels.Bgra.AsSpan(0, pixels.Width * pixels.Height * 4));
+        var bitmap = new WriteableBitmap(pixels.Width, pixels.Height);
+        using (var stream = bitmap.PixelBuffer.AsStream())
         {
-            // The Bitmap copies the buffer, so the pin only needs to last for the constructor.
-            return new Bitmap(
-                PixelFormat.Bgra8888,
-                AlphaFormat.Unpremul,
-                handle.AddrOfPinnedObject(),
-                new PixelSize(pixels.Width, pixels.Height),
-                new Vector(96, 96),
-                pixels.Width * 4);
+            stream.Write(premultiplied, 0, premultiplied.Length);
         }
-        finally
-        {
-            handle.Free();
-        }
+
+        bitmap.Invalidate();
+        return bitmap;
     }
 
     public void Dispose()
     {
-        foreach (var b in _byPath.Values.Concat(_byWindow.Values))
-        {
-            b?.Dispose();
-        }
-
         _byPath.Clear();
         _byWindow.Clear();
     }

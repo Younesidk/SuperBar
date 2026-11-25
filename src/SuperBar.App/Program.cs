@@ -1,5 +1,5 @@
-using Avalonia;
-using Avalonia.Controls;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 using Serilog;
 using Serilog.Extensions.Logging;
 using SuperBar.Infrastructure;
@@ -19,6 +19,7 @@ internal static class Program
     ///   --restore-taskbar   restore a native taskbar left hidden by a crashed session, then exit
     ///   --control-center    open the Control Center on start-up
     ///   --verbose           debug-level logging
+    /// The XAML-generated Main is disabled (DISABLE_XAML_GENERATED_MAIN) so all of this runs before WinUI starts.
     /// </summary>
     [STAThread]
     public static int Main(string[] args)
@@ -36,6 +37,7 @@ internal static class Program
         {
             if (args.Contains("--restore-taskbar"))
             {
+                // No WinUI: works even when the UI cannot start.
                 Log.Information("--restore-taskbar: restored = {Restored}", WindowsServiceCollectionExtensions.RestoreNativeTaskbar(recoveryStore, loggerFactory));
                 return 0;
             }
@@ -60,7 +62,19 @@ internal static class Program
             AppDomain.CurrentDomain.ProcessExit += (_, _) => EmergencyRestore();
 
             App.Configure(paths, Log.Logger, args);
-            return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
+
+            // Manual WinUI 3 bootstrap (what the generated Main would do), on this STA thread.
+            WinRT.ComWrappersSupport.InitializeComWrappers();
+            Application.Start(callbackParams =>
+            {
+                var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
+                SynchronizationContext.SetSynchronizationContext(context);
+                _ = new App();
+            });
+
+            // The message loop has ended (normally via App.Shutdown). Make sure services are disposed either way.
+            App.Instance?.ShutdownServices();
+            return 0;
         }
         catch (Exception ex)
         {
@@ -74,10 +88,4 @@ internal static class Program
             Log.CloseAndFlush();
         }
     }
-
-    // Also used by the Avalonia designer.
-    public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<App>()
-            .UsePlatformDetect()
-            .LogToTrace();
 }

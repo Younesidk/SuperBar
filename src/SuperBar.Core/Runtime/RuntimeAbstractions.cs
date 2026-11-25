@@ -29,3 +29,14 @@ public interface IAppPaths
     string LogDirectory { get; }
     string RecoveryFilePath { get; }
 }
+
+/// <summary>The application process lifetime, owned by the composition root.</summary>
+public interface IAppLifetime
+{
+    /// <summary>
+    /// Requests an orderly exit: disposes the taskbar runtime and every service (unhooking shell hooks and restoring
+    /// the native taskbar), then ends the UI message loop. Returns immediately; the work runs on the UI thread once
+    /// the caller's stack has unwound. Idempotent.
+    /// </summary>
+    void Shutdown();
+}

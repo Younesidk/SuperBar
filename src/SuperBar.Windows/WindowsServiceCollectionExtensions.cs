@@ -27,6 +27,7 @@ public static class WindowsServiceCollectionExtensions
         services.AddSingleton<IAppLauncher, AppLauncher>();
         services.AddSingleton<IIconProvider, IconProvider>();
         services.AddSingleton<IShellCommands, ShellCommands>();
+        services.AddSingleton<IWindowChrome, WindowChrome>();
         services.AddSingleton<ISystemMetricsProvider, SystemMetricsProvider>();
         return services;
     }

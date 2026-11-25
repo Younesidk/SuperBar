@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
-using Avalonia.Media.Imaging;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Xaml.Media;
 using SuperBar.Core.Mvvm;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
@@ -135,7 +135,7 @@ public sealed class AppsSectionViewModel : SectionViewModel
         }
     }
 
-    private Bitmap? ResolveIcon(PinnedApp? pin, List<TrackedWindow> windows)
+    private ImageSource? ResolveIcon(PinnedApp? pin, List<TrackedWindow> windows)
     {
         if (pin is not null)
         {
@@ -199,7 +199,8 @@ public sealed class AppButtonViewModel : ObservableObject
     private readonly AppsSectionViewModel _owner;
     private string _displayName = "";
     private string _toolTip = "";
-    private Bitmap? _icon;
+    private readonly RelayCommand _launchNewCommand;
+    private ImageSource? _icon;
     private bool _isPinned;
     private bool _isRunning;
     private bool _isActive;
@@ -210,14 +211,15 @@ public sealed class AppButtonViewModel : ObservableObject
         Key = key;
         _owner = owner;
         ClickCommand = new RelayCommand(() => _owner.OnClicked(this));
-        LaunchNewCommand = new RelayCommand(() => _owner.OnLaunchNew(this));
+        _launchNewCommand = new RelayCommand(_ => _owner.OnLaunchNew(this), _ => CanLaunch);
     }
 
     public string Key { get; }
 
     public ICommand ClickCommand { get; }
 
-    public ICommand LaunchNewCommand { get; }
+    /// <summary>"Open new window". Disabled through CanExecute when there is nothing to launch.</summary>
+    public ICommand LaunchNewCommand => _launchNewCommand;
 
     public List<TrackedWindow> Windows { get; private set; } = [];
 
@@ -229,7 +231,7 @@ public sealed class AppButtonViewModel : ObservableObject
 
     public string ToolTip { get => _toolTip; private set => SetProperty(ref _toolTip, value); }
 
-    public Bitmap? Icon
+    public ImageSource? Icon
     {
         get => _icon;
         private set
@@ -237,11 +239,15 @@ public sealed class AppButtonViewModel : ObservableObject
             if (SetProperty(ref _icon, value))
             {
                 OnPropertyChanged(nameof(HasIcon));
+                OnPropertyChanged(nameof(ShowInitial));
             }
         }
     }
 
     public bool HasIcon => _icon is not null;
+
+    /// <summary>The fallback initial letter is shown when there is no icon.</summary>
+    public bool ShowInitial => _icon is null;
 
     public string Initial => string.IsNullOrEmpty(DisplayName) ? "?" : DisplayName[..1].ToUpperInvariant();
 
@@ -255,7 +261,7 @@ public sealed class AppButtonViewModel : ObservableObject
 
     public bool CanLaunch => LaunchPath is not null;
 
-    internal void Update(PinnedApp? pin, List<TrackedWindow> windows, nint activeWindow, Bitmap? icon)
+    internal void Update(PinnedApp? pin, List<TrackedWindow> windows, nint activeWindow, ImageSource? icon)
     {
         Windows = windows;
         IsPinned = pin is not null;
@@ -266,6 +272,7 @@ public sealed class AppButtonViewModel : ObservableObject
                       ?? "";
         OnPropertyChanged(nameof(Initial));
         OnPropertyChanged(nameof(CanLaunch));
+        _launchNewCommand.RaiseCanExecuteChanged();
         Icon = icon;
         IsRunning = windows.Count > 0;
         HasMultipleWindows = windows.Count > 1;
