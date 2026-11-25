@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using SuperBar.Core.Shell;
 using SuperBar.Windows.AppBar;
+using SuperBar.Windows.Bluetooth;
 using SuperBar.Windows.Media;
 using SuperBar.Windows.Apps;
 using SuperBar.Windows.Monitors;
@@ -35,6 +36,9 @@ public static class WindowsServiceCollectionExtensions
 
         // Created on first use (by the Now Playing widget), on the UI thread.
         services.AddSingleton<IMediaSessionService, GsmtcMediaSessionService>();
+
+        // Stateless; queried from the thread pool by the Bluetooth Battery widget.
+        services.AddSingleton<IBluetoothBatteryService, PnpBluetoothBatteryService>();
         return services;
     }
 

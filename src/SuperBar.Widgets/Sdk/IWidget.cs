@@ -67,7 +67,11 @@ public interface IWidgetScope
     /// retried with exponential back-off; the widget keeps its last good data and is not faulted.
     /// </summary>
     /// <param name="runImmediately">Run the first time right away instead of after one interval.</param>
-    void Poll<T>(
+    /// <returns>
+    /// Stops this polling loop early when disposed (for example to restart it with a new interval); its pending
+    /// result is dropped. Ignore it when the loop should simply last as long as the scope.
+    /// </returns>
+    IDisposable Poll<T>(
         TimeSpan interval,
         Func<CancellationToken, Task<T>> work,
         Action<T> apply,

@@ -230,3 +230,31 @@ public interface IWindowChrome
     /// <summary>The window's DPI scale (1.0 = 96 DPI).</summary>
     double GetScale(nint windowHandle);
 }
+
+/// <summary>What a Bluetooth device is, as far as its icon is concerned.</summary>
+public enum BluetoothDeviceKind
+{
+    Unknown,
+    Headphones,
+    Earbuds,
+    Mouse,
+    Keyboard,
+    Gamepad,
+    Speaker,
+}
+
+/// <summary>A connected Bluetooth device that reports its battery level. <paramref name="Id"/> is its PnP container id.</summary>
+public sealed record BluetoothBatteryDevice(string Id, string Name, int BatteryPercent, BluetoothDeviceKind Kind);
+
+/// <summary>
+/// Battery levels of the connected Bluetooth devices (Classic and LE) that report one, as Windows itself knows them
+/// (the same values as Settings → Bluetooth &amp; devices). Never connects to a device. Safe to call from any thread.
+/// </summary>
+public interface IBluetoothBatteryService
+{
+    /// <summary>
+    /// One entry per connected device that reports a 0..100 battery level, lowest level first, then by name.
+    /// Empty when there is no radio, Bluetooth is off or nothing is connected; never throws for those.
+    /// </summary>
+    Task<IReadOnlyList<BluetoothBatteryDevice>> GetConnectedDevicesAsync(CancellationToken cancellationToken);
+}

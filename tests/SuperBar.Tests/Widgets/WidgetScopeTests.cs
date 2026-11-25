@@ -143,6 +143,43 @@ public class WidgetScopeTests
     }
 
     [Fact]
+    public void A_polling_loop_can_be_stopped_on_its_own_while_the_scope_and_other_loops_go_on()
+    {
+        IDisposable? first = null;
+        var firstRuns = 0;
+        var firstApplied = 0;
+        var secondApplied = 0;
+        var host = Host(
+            scope =>
+            {
+                first = scope.Poll(
+                    TimeSpan.FromMilliseconds(10),
+                    _ =>
+                    {
+                        Interlocked.Increment(ref firstRuns);
+                        return Task.FromResult(1);
+                    },
+                    _ => firstApplied++);
+                scope.Poll(TimeSpan.FromMilliseconds(10), _ => Task.FromResult(2), _ => secondApplied++);
+            },
+            out var widget);
+        host.Activate();
+        _ui.PumpUntil(() => firstApplied >= 2 && secondApplied >= 2);
+
+        first!.Dispose();
+        first.Dispose(); // idempotent
+        var runs = Volatile.Read(ref firstRuns);
+        var applied = firstApplied;
+        var otherApplied = secondApplied;
+        _ui.PumpFor(150);
+
+        Assert.Equal(applied, firstApplied); // nothing of the stopped loop arrives any more, not even a run in flight
+        Assert.True(Volatile.Read(ref firstRuns) <= runs + 1);
+        Assert.True(secondApplied > otherApplied);
+        Assert.False(widget.Scope!.Token.IsCancellationRequested);
+    }
+
+    [Fact]
     public void Polling_can_wait_one_interval_before_its_first_run()
     {
         var runs = 0;

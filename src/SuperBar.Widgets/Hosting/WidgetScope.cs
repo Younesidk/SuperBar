@@ -73,7 +73,7 @@ internal sealed class WidgetScope : IWidgetScope, IDisposable
         timer.Start();
     }
 
-    public void Poll<T>(
+    public IDisposable Poll<T>(
         TimeSpan interval,
         Func<CancellationToken, Task<T>> work,
         Action<T> apply,
@@ -86,11 +86,23 @@ internal sealed class WidgetScope : IWidgetScope, IDisposable
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(interval, TimeSpan.Zero);
         if (_disposed)
         {
-            return;
+            return new Unsubscriber(() => { });
         }
 
-        var token = Token;
+        // Each loop has its own token, so one loop can stop while the scope (and its other loops) go on.
+        var loop = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        var token = loop.Token;
+        PollLoop? handle = null;
+        handle = new PollLoop(loop, () =>
+        {
+            if (!_disposed)
+            {
+                _owned.Remove(handle!);
+            }
+        });
+        _owned.Add(handle);
         _ = Task.Run(() => PollAsync(interval, work, apply, timeout ?? DefaultWorkTimeout, runImmediately, onError, token), CancellationToken.None);
+        return handle;
     }
 
     public void Run<T>(Func<CancellationToken, Task<T>> work, Action<T> apply, TimeSpan? timeout = null, Action<Exception>? onError = null)
@@ -236,7 +248,7 @@ internal sealed class WidgetScope : IWidgetScope, IDisposable
 
                 hung = run.Hung;
                 failures = run.Error is null ? 0 : failures + 1;
-                Report(run, apply, onError, failures);
+                Report(run, apply, onError, failures, token);
 
                 await Task.Delay(NextDelay(interval, failures), token).ConfigureAwait(false);
             }
@@ -295,12 +307,20 @@ internal sealed class WidgetScope : IWidgetScope, IDisposable
         }
     }
 
-    private void Report<T>(WorkResult<T> run, Action<T> apply, Action<Exception>? onError, int failures)
+    private void Report<T>(WorkResult<T> run, Action<T> apply, Action<Exception>? onError, int failures, CancellationToken stopped = default)
     {
         if (run.Error is null)
         {
             var value = run.Value!;
-            Post(() => apply(value), "background result");
+            Post(
+                () =>
+                {
+                    if (!stopped.IsCancellationRequested)
+                    {
+                        apply(value);
+                    }
+                },
+                "background result");
             return;
         }
 
@@ -308,7 +328,15 @@ internal sealed class WidgetScope : IWidgetScope, IDisposable
         if (onError is not null)
         {
             var error = run.Error;
-            Post(() => onError(error), "background error");
+            Post(
+                () =>
+                {
+                    if (!stopped.IsCancellationRequested)
+                    {
+                        onError(error);
+                    }
+                },
+                "background error");
         }
     }
 
@@ -333,5 +361,30 @@ internal sealed class WidgetScope : IWidgetScope, IDisposable
     private sealed class Unsubscriber(Action unsubscribe) : IDisposable
     {
         public void Dispose() => unsubscribe();
+    }
+
+    /// <summary>The handle <see cref="Poll{T}"/> returns: stops its loop once, whether the widget or the scope ends it.</summary>
+    private sealed class PollLoop(CancellationTokenSource loop, Action forget) : IDisposable
+    {
+        private bool _stopped;
+
+        public void Dispose()
+        {
+            if (_stopped)
+            {
+                return;
+            }
+
+            _stopped = true;
+            forget();
+            try
+            {
+                loop.Cancel();
+            }
+            finally
+            {
+                loop.Dispose();
+            }
+        }
     }
 }
