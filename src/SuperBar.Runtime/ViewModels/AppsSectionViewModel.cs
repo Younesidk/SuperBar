@@ -31,6 +31,8 @@ public sealed class AppsSectionViewModel : SectionViewModel
     private List<string> _manualOrder = [];
     private bool _reordering;
     private bool _rebuildPending;
+    private DateTime _animateAfter = DateTime.MaxValue;
+    private readonly List<AppButtonViewModel> _finishedLeaving = [];
 
     /// <summary>Raised after a drag changed the order: the keys of the pinned apps, in their new order.</summary>
     public event Action<IReadOnlyList<string>>? PinOrderChanged;
@@ -50,7 +52,13 @@ public sealed class AppsSectionViewModel : SectionViewModel
         _logger = logger;
     }
 
+    /// <summary>Right after activation the tracker is still reporting the windows that were already open.</summary>
+    private static readonly TimeSpan StartupGrace = TimeSpan.FromSeconds(2);
+
     public ObservableCollection<AppButtonViewModel> Apps { get; } = new();
+
+    /// <summary>A button is appearing or disappearing: the row is changing width, so a drag waits.</summary>
+    public bool IsAnimating => Apps.Any(a => a.IsLeaving || a.IsAnimating);
 
     public void SetPins(IReadOnlyList<PinnedApp> pins)
     {
@@ -68,6 +76,7 @@ public sealed class AppsSectionViewModel : SectionViewModel
         _active = true;
         _tracker.WindowsChanged += OnWindowsChanged;
         Rebuild();
+        _animateAfter = DateTime.UtcNow + StartupGrace;
     }
 
     public override void Deactivate()
@@ -93,9 +102,9 @@ public sealed class AppsSectionViewModel : SectionViewModel
         if (from != to && from >= 0 && to >= 0 && from < Apps.Count && to < Apps.Count)
         {
             Apps.Move(from, to);
-            _manualOrder = Apps.Select(a => a.Key).ToList();
+            _manualOrder = Apps.Where(a => !a.IsLeaving).Select(a => a.Key).ToList();
             _logger.LogInformation("Moved {App} to position {Position}", Apps[to].DisplayName, to);
-            PinOrderChanged?.Invoke(Apps.Where(a => a.IsPinned).Select(a => a.Key).ToList());
+            PinOrderChanged?.Invoke(Apps.Where(a => a.IsPinned && !a.IsLeaving).Select(a => a.Key).ToList());
         }
 
         if (_rebuildPending)
@@ -115,6 +124,16 @@ public sealed class AppsSectionViewModel : SectionViewModel
             _rebuildPending = true;
             return;
         }
+
+        foreach (var vm in _finishedLeaving)
+        {
+            if (vm.IsLeaving)
+            {
+                Apps.Remove(vm);
+            }
+        }
+
+        _finishedLeaving.Clear();
 
         var windowsByKey = new Dictionary<string, List<TrackedWindow>>();
         var runningOrder = new List<string>();
@@ -151,21 +170,46 @@ public sealed class AppsSectionViewModel : SectionViewModel
 
         desired = AppOrdering.Arrange(desired, d => d.Key, _manualOrder);
 
+        // The buttons the bar starts with appear at once; apps opened or closed later animate.
+        var animate = DateTime.UtcNow >= _animateAfter;
         var existing = Apps.ToDictionary(a => a.Key);
         var active = _tracker.ActiveWindow;
-        for (var i = 0; i < desired.Count; i++)
+        var target = new List<AppButtonViewModel>(desired.Count);
+        foreach (var (key, pin) in desired)
         {
-            var (key, pin) = desired[i];
             windowsByKey.TryGetValue(key, out var windows);
             windows ??= [];
 
             if (!existing.TryGetValue(key, out var vm))
             {
-                vm = new AppButtonViewModel(key, this);
+                vm = new AppButtonViewModel(key, this) { AnimateIn = animate };
             }
 
+            vm.IsLeaving = false; // reopened while it was animating out
             vm.Update(pin, windows, active, ResolveIcon(pin, windows), _icons.ForPixels(ResolveBadge(windows, active)));
+            target.Add(vm);
+        }
 
+        // Closed apps keep their slot while they animate out (CompleteRemoval takes them off).
+        var kept = new HashSet<AppButtonViewModel>(target);
+        AppButtonViewModel? previous = null;
+        foreach (var vm in Apps)
+        {
+            if (!kept.Contains(vm) && animate)
+            {
+                vm.IsLeaving = true;
+                target.Insert(previous is null ? 0 : target.IndexOf(previous) + 1, vm);
+            }
+
+            if (target.Contains(vm))
+            {
+                previous = vm;
+            }
+        }
+
+        for (var i = 0; i < target.Count; i++)
+        {
+            var vm = target[i];
             var currentIndex = Apps.IndexOf(vm);
             if (currentIndex < 0)
             {
@@ -177,10 +221,27 @@ public sealed class AppsSectionViewModel : SectionViewModel
             }
         }
 
-        while (Apps.Count > desired.Count)
+        while (Apps.Count > target.Count)
         {
             Apps.RemoveAt(Apps.Count - 1);
         }
+    }
+
+    internal void CompleteRemoval(AppButtonViewModel vm)
+    {
+        if (!vm.IsLeaving)
+        {
+            return;
+        }
+
+        if (_reordering)
+        {
+            _rebuildPending = true; // indexes must stay put until the drop; the next rebuild drops it
+            _finishedLeaving.Add(vm);
+            return;
+        }
+
+        Apps.Remove(vm);
     }
 
     /// <summary>
@@ -303,6 +364,7 @@ public sealed class AppButtonViewModel : ObservableObject
     private bool _isHovered;
     private bool _isFlashing;
     private ImageSource? _badge;
+    private bool _isLeaving;
 
     public AppButtonViewModel(string key, AppsSectionViewModel owner)
     {
@@ -391,6 +453,24 @@ public sealed class AppButtonViewModel : ObservableObject
     }
 
     public bool HasBadge => _badge is not null;
+
+    /// <summary>
+    /// The button is new (an app just opened): the view plays its appear animation once, then clears this.
+    /// False for the buttons the bar starts with, so a launch does not animate the whole row.
+    /// </summary>
+    public bool AnimateIn { get; set; }
+
+    /// <summary>
+    /// The app closed: the button stays in place while the view plays its disappear animation, then calls
+    /// <see cref="CompleteRemoval"/>. Cleared again if the app comes back first.
+    /// </summary>
+    public bool IsLeaving { get => _isLeaving; internal set => SetProperty(ref _isLeaving, value); }
+
+    /// <summary>Set by the view while an appear or disappear animation runs (no drag can start meanwhile).</summary>
+    public bool IsAnimating { get; set; }
+
+    /// <summary>The disappear animation finished: take the button off the bar.</summary>
+    public void CompleteRemoval() => _owner.CompleteRemoval(this);
 
     internal void Update(PinnedApp? pin, List<TrackedWindow> windows, nint activeWindow, ImageSource? icon, ImageSource? badge = null)
     {

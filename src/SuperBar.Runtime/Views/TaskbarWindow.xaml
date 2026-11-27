@@ -126,7 +126,8 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:AppButtonViewModel">
               <!-- Drag to reorder: see AppDragController. The click is routed through OnAppClick so a drag never clicks. -->
-              <Grid VerticalAlignment="Center" Loaded="OnAppItemLoaded">
+              <views:AppPresence VerticalAlignment="Center" Loaded="OnAppItemLoaded"
+                                 IsLeaving="{x:Bind IsLeaving, Mode=OneWay}">
               <views:StackPlate Background="{StaticResource SB.ActiveItem}"
                                 CornerRadius="{Binding ItemCornerRadius, Source={StaticResource SB.Theme}}"
                                 Opacity="{x:Bind views:TaskbarBrushes.StackOpacity(HasMultipleWindows, IsHovered, IsActive), Mode=OneWay}" />
@@ -170,7 +171,7 @@
                                           InactiveBrush="{StaticResource SB.Subtle}" />
                 </Grid>
               </Button>
-              </Grid>
+              </views:AppPresence>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>

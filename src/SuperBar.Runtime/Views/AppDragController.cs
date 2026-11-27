@@ -168,6 +168,12 @@ internal sealed class AppDragController
         _itemWidth = container.ActualSize.X;
         _target = _from;
         _section = FindSection(panel);
+        if (_section?.IsAnimating == true)
+        {
+            Reset(); // a button is appearing or disappearing: the slots are still moving
+            return false;
+        }
+
         _section?.BeginReorder();
         _dragging = true;
 

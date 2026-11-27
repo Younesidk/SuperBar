@@ -214,6 +214,177 @@ public sealed partial class AttentionHighlight : Grid
 }
 
 /// <summary>
+/// The root of an application button: plays its appear animation when an app opens and its disappear animation when
+/// it closes, instead of the button popping in or out.
+/// <para>
+/// <see cref="Reveal"/> (0 = gone, 1 = fully there) drives both: the slot the button takes in the row grows or shrinks
+/// with it, so the neighbouring buttons slide over smoothly, while the content fades and scales from its centre. The
+/// row's spacing is folded in too (a negative right margin), so nothing jumps when the button is finally removed.
+/// </para>
+/// </summary>
+public sealed partial class AppPresence : Grid
+{
+    public static readonly TimeSpan AppearDuration = TimeSpan.FromMilliseconds(240);
+    public static readonly TimeSpan DisappearDuration = TimeSpan.FromMilliseconds(200);
+    private const double StartScale = 0.5;
+
+    public static readonly DependencyProperty RevealProperty = DependencyProperty.Register(
+        nameof(Reveal), typeof(double), typeof(AppPresence), new PropertyMetadata(1.0, (d, _) => ((AppPresence)d).ApplyReveal()));
+
+    public static readonly DependencyProperty IsLeavingProperty = DependencyProperty.Register(
+        nameof(IsLeaving), typeof(bool), typeof(AppPresence), new PropertyMetadata(false, (d, _) => ((AppPresence)d).OnIsLeavingChanged()));
+
+    private readonly ScaleTransform _scale = new();
+    private Storyboard? _storyboard;
+    private double _naturalWidth;
+
+    public AppPresence()
+    {
+        RenderTransform = _scale;
+        RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    /// <summary>How much of the button is there, from 0 (gone) to 1. Animated.</summary>
+    public double Reveal { get => (double)GetValue(RevealProperty); set => SetValue(RevealProperty, value); }
+
+    /// <summary>The app closed: animate out, then take the button off the bar.</summary>
+    public bool IsLeaving { get => (bool)GetValue(IsLeavingProperty); set => SetValue(IsLeavingProperty, value); }
+
+    private AppButtonViewModel? App => DataContext as AppButtonViewModel;
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (App is { IsLeaving: true })
+        {
+            Animate(to: 0); // re-created mid-animation (the row was reordered)
+        }
+        else if (App is { AnimateIn: true } app)
+        {
+            app.AnimateIn = false;
+            Reveal = 0;
+            Animate(to: 1);
+        }
+        else if (App is { } settled)
+        {
+            settled.IsAnimating = false; // an earlier element for this button was unloaded mid-animation
+        }
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        _storyboard?.Stop();
+        _storyboard = null;
+        if (App is { } app)
+        {
+            app.IsAnimating = false;
+        }
+    }
+
+    private void OnIsLeavingChanged()
+    {
+        IsHitTestVisible = !IsLeaving;
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        Animate(to: IsLeaving ? 0 : 1);
+    }
+
+    private void Animate(double to)
+    {
+        // Continue from where a running animation is, so reopening an app mid-close turns it around smoothly.
+        var from = Reveal;
+        _storyboard?.Stop();
+        Reveal = from;
+
+        if (App is { } app)
+        {
+            app.IsAnimating = true;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            From = from,
+            To = to,
+            Duration = to > from ? AppearDuration : DisappearDuration,
+            EnableDependentAnimation = true, // drives layout (the slot's width)
+            EasingFunction = new CubicEase { EasingMode = to > from ? EasingMode.EaseOut : EasingMode.EaseInOut },
+            FillBehavior = FillBehavior.HoldEnd,
+        };
+        Storyboard.SetTarget(animation, this);
+        Storyboard.SetTargetProperty(animation, nameof(Reveal));
+        var storyboard = new Storyboard { Children = { animation } };
+        storyboard.Completed += (_, _) =>
+        {
+            if (!ReferenceEquals(_storyboard, storyboard))
+            {
+                return;
+            }
+
+            _storyboard = null;
+            if (App is { } current)
+            {
+                current.IsAnimating = false;
+                if (to == 0 && current.IsLeaving)
+                {
+                    current.CompleteRemoval();
+                }
+            }
+        };
+        _storyboard = storyboard;
+        storyboard.Begin();
+    }
+
+    private void ApplyReveal()
+    {
+        var reveal = Math.Clamp(Reveal, 0, 1);
+        Opacity = reveal;
+        _scale.ScaleX = _scale.ScaleY = StartScale + (1 - StartScale) * reveal;
+        Margin = new Thickness(0, 0, -(1 - reveal) * ItemSpacing(), 0);
+        InvalidateMeasure();
+    }
+
+    /// <summary>The spacing the row's panel puts after this button (the item container's parent).</summary>
+    private double ItemSpacing()
+    {
+        DependencyObject? node = this;
+        for (var i = 0; i < 3 && node is not null; i++)
+        {
+            node = VisualTreeHelper.GetParent(node);
+            if (node is StackPanel panel)
+            {
+                return panel.Spacing;
+            }
+        }
+
+        return 0;
+    }
+
+    protected override Windows.Foundation.Size MeasureOverride(Windows.Foundation.Size availableSize)
+    {
+        var natural = base.MeasureOverride(availableSize);
+        _naturalWidth = natural.Width;
+        return new Windows.Foundation.Size(natural.Width * Math.Clamp(Reveal, 0, 1), natural.Height);
+    }
+
+    protected override Windows.Foundation.Size ArrangeOverride(Windows.Foundation.Size finalSize)
+    {
+        // Lay the content out at full size, centred in the (narrower) slot: it is scaled down, not squeezed.
+        var width = Math.Max(_naturalWidth, finalSize.Width);
+        var rect = new Windows.Foundation.Rect((finalSize.Width - width) / 2, 0, width, finalSize.Height);
+        foreach (var child in Children)
+        {
+            child.Arrange(rect);
+        }
+
+        return finalSize;
+    }
+}
+
+/// <summary>
 /// Collapses a zone item completely: the template root and the items control's container around it, so the zone's
 /// panel adds no spacing for it either. Set on the root of an item template.
 /// </summary>
