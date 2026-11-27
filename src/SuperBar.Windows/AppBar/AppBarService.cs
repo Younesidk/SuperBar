@@ -27,6 +27,9 @@ internal sealed class AppBarRegistration : IAppBarRegistration
     private readonly IMonitorService _monitors;
     private readonly ILogger _logger;
     private readonly SubclassProc _subclassProc; // must stay referenced while subclassed
+    private readonly WinEventProc _foregroundProc; // must stay referenced while hooked
+    private nint _foregroundHook;
+    private bool _shellReportsFullscreen;
     private readonly uint _callbackMessage;
     private AppBarOptions _options;
     private bool _registered;
@@ -41,6 +44,7 @@ internal sealed class AppBarRegistration : IAppBarRegistration
         _logger = logger;
         _callbackMessage = RegisterWindowMessage("SuperBar.AppBarCallback");
         _subclassProc = SubclassWndProc;
+        _foregroundProc = OnForegroundChanged;
 
         if (!SetWindowSubclass(_hwnd, _subclassProc, SubclassId, 0))
         {
@@ -221,20 +225,117 @@ internal sealed class AppBarRegistration : IAppBarRegistration
                 break;
 
             case ABN_FULLSCREENAPP:
-            {
-                var fullscreen = lParam != 0;
-                if (fullscreen == IsFullscreenAppActive)
-                {
-                    break;
-                }
-
-                IsFullscreenAppActive = fullscreen;
-                _logger.LogInformation("Full-screen application {State}", fullscreen ? "opened" : "closed");
-                SetWindowPos(_hwnd, fullscreen ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-                FullscreenAppChanged?.Invoke(this, fullscreen);
+                _shellReportsFullscreen = lParam != 0;
+                UpdateForegroundHook();
+                EvaluateFullscreen();
                 break;
-            }
         }
+    }
+
+    /// <summary>
+    /// The shell's report is not trusted on its own. It also reports "full-screen app" for the desktop itself
+    /// (Win+D, Show desktop), because the desktop window covers the monitor, and then never reports it closed when
+    /// normal windows come back. Dropping out of topmost on that report let the desktop cover the bar, and the stale
+    /// flag would have hidden the bar behind the next ordinary window. So while the shell reports one, the
+    /// foreground window must really cover this bar's monitor (and not be the desktop or SuperBar), re-checked on
+    /// every foreground change.
+    /// </summary>
+    private void EvaluateFullscreen()
+    {
+        var foreground = GetForegroundWindow();
+        var fullscreen = _shellReportsFullscreen && IsFullscreenWindow(foreground);
+        if (fullscreen == IsFullscreenAppActive)
+        {
+            return;
+        }
+
+        IsFullscreenAppActive = fullscreen;
+        _logger.LogInformation("Full-screen application {State}", fullscreen ? "opened" : "closed");
+        const uint flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE;
+        if (fullscreen)
+        {
+            // Leaving the topmost band keeps the bar at the top of the normal band, still above the full-screen
+            // window: place it directly behind that window as well.
+            SetWindowPos(_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, flags);
+            SetWindowPos(_hwnd, foreground, 0, 0, 0, 0, flags);
+        }
+        else
+        {
+            SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags);
+        }
+
+        FullscreenAppChanged?.Invoke(this, fullscreen);
+    }
+
+    /// <summary>Watches foreground changes only while the shell reports a full-screen window.</summary>
+    private void UpdateForegroundHook()
+    {
+        if (_shellReportsFullscreen && _foregroundHook == 0 && !_disposed)
+        {
+            _foregroundHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, 0, _foregroundProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+        }
+        else if (!_shellReportsFullscreen && _foregroundHook != 0)
+        {
+            UnhookWinEvent(_foregroundHook);
+            _foregroundHook = 0;
+        }
+    }
+
+    private void OnForegroundChanged(nint hook, uint eventType, nint hwnd, int idObject, int idChild, uint thread, uint time)
+    {
+        try
+        {
+            EvaluateFullscreen();
+        }
+        catch (Exception ex)
+        {
+            // Never let an exception unwind through a native frame.
+            _logger.LogError(ex, "Failed to re-evaluate the full-screen state");
+        }
+    }
+
+    private bool IsFullscreenWindow(nint hwnd)
+    {
+        if (hwnd == 0 || hwnd == _hwnd || IsDesktopWindow(hwnd))
+        {
+            return false;
+        }
+
+        GetWindowThreadProcessId(hwnd, out var pid);
+        if (pid == (uint)Environment.ProcessId)
+        {
+            return false;
+        }
+
+        var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if (monitor != MonitorFromWindow(_hwnd, MONITOR_DEFAULTTONEAREST))
+        {
+            return false;
+        }
+
+        var info = new MONITORINFOEX { cbSize = (uint)Marshal.SizeOf<MONITORINFOEX>() };
+        if (!GetMonitorInfo(monitor, ref info) || !GetWindowRect(hwnd, out var rect))
+        {
+            return false;
+        }
+
+        // Maximized windows stop at the work area (above the bar); only full-screen windows cover the whole monitor.
+        var m = info.rcMonitor;
+        return rect.Left <= m.Left && rect.Top <= m.Top && rect.Right >= m.Right && rect.Bottom >= m.Bottom;
+    }
+
+    /// <summary>The desktop: Progman, or the WorkerW that hosts the icons and wallpaper.</summary>
+    internal static bool IsDesktopWindow(nint hwnd)
+    {
+        if (hwnd == 0)
+        {
+            return false;
+        }
+
+        var buffer = new char[32];
+        var length = GetClassName(hwnd, buffer, buffer.Length);
+        var name = new string(buffer, 0, Math.Max(0, length));
+        return name is "Progman" or "WorkerW";
     }
 
     private APPBARDATA NewData() => new()
@@ -266,6 +367,12 @@ internal sealed class AppBarRegistration : IAppBarRegistration
         }
 
         _disposed = true;
+        if (_foregroundHook != 0)
+        {
+            UnhookWinEvent(_foregroundHook);
+            _foregroundHook = 0;
+        }
+
         Unregister();
         if (IsWindow(_hwnd))
         {
