@@ -12,13 +12,19 @@ using WinRT.Interop;
 
 namespace SuperBar.ControlCenter.Views;
 
-/// <summary>The separate settings window: Mica, a left navigation pane and one scrollable page.</summary>
+/// <summary>
+/// The separate settings window: Mica, a left navigation pane with a status footer, and one page at a time. Each page
+/// template is rooted in a <see cref="PageContainer"/>, which owns the page's header, scrolling and centered column.
+/// </summary>
 public sealed partial class ControlCenterWindow : Window
 {
-    private const int WidthDip = 920;
-    private const int HeightDip = 620;
-    private const int MinWidthDip = 720;
-    private const int MinHeightDip = 480;
+    // Comfortable without maximizing; still below Breakpoints.WideMinWidth, so the window opens in the compact layout.
+    private const int WidthDip = 980;
+    private const int HeightDip = 680;
+
+    // The smallest size at which the pane (232) plus a single-column page stays usable.
+    private const int MinWidthDip = 760;
+    private const int MinHeightDip = 540;
 
     public ControlCenterWindow(ControlCenterViewModel viewModel, IWindowChrome chrome)
     {

@@ -11,8 +11,17 @@ using SuperBar.Widgets;
 
 namespace SuperBar.ControlCenter.ViewModels;
 
+/// <summary>What the Control Center says about the running application.</summary>
+public static class AppInfo
+{
+    /// <summary>The application version, e.g. "0.1.0" (the entry assembly's; set once in Directory.Build.props).</summary>
+    public static string Version { get; } = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.1.0";
+}
+
+/// <summary>The window's shell: the pages, the selected one, and the navigation pane's status footer.</summary>
 public sealed class ControlCenterViewModel : ObservableObject, IDisposable
 {
+    private readonly ITaskbarRuntimeController _runtime;
     private PageViewModel _selectedPage;
 
     public ControlCenterViewModel(
@@ -26,6 +35,10 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
         IIconProvider icons,
         IUiDispatcher dispatcher)
     {
+        _runtime = runtime;
+        _runtime.StateChanged += OnRuntimeStateChanged;
+        ExitCommand = new RelayCommand(runtime.Exit);
+
         Pages = (PageViewModel[])
         [
             new GeneralPageViewModel(settings, runtime),
@@ -52,9 +65,37 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Detaches the pages from long-lived services when the window closes.</summary>
+    // ----- Status footer of the navigation pane -----
+
+    /// <summary>True while the bar is shown; false while SuperBar is paused (the process keeps running).</summary>
+    public bool IsActive => _runtime.IsEnabled;
+
+    public bool IsPaused => !_runtime.IsEnabled;
+
+    public string StatusText => IsActive ? "SuperBar Active" : "Paused";
+
+    public string StatusDescription => IsActive
+        ? "SuperBar is running in place of the Windows taskbar."
+        : "SuperBar is paused and the Windows taskbar is back. Turn it on again under General.";
+
+    public string VersionLabel { get; } = "v" + AppInfo.Version;
+
+    /// <summary>Restores the Windows taskbar and ends the application.</summary>
+    public ICommand ExitCommand { get; }
+
+    // Raised on the UI thread: the runtime is only enabled and disabled there.
+    private void OnRuntimeStateChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(IsActive));
+        OnPropertyChanged(nameof(IsPaused));
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(StatusDescription));
+    }
+
+    /// <summary>Detaches the shell and the pages from long-lived services when the window closes.</summary>
     public void Dispose()
     {
+        _runtime.StateChanged -= OnRuntimeStateChanged;
         foreach (var page in Pages.OfType<IDisposable>())
         {
             page.Dispose();
@@ -556,7 +597,7 @@ public sealed class AboutPageViewModel : PageViewModel
         OpenLogFolderCommand = new RelayCommand(() => launcher.Launch(paths.LogDirectory));
     }
 
-    public string Version { get; } = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.1.0";
+    public string Version { get; } = AppInfo.Version;
     public string DataDirectory { get; }
     public string LogDirectory { get; }
     public string VersionLabel => $"SuperBar {Version} - foundation milestone";
