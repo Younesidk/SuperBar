@@ -26,6 +26,7 @@ public sealed partial class TaskbarWindow : Window
     private readonly TaskbarAcrylicBackdrop _acrylic;
     private readonly WindowPreviewPopup _preview;
     private readonly AppDragController _drag;
+    private readonly WidgetDragController _widgetDrag;
 
     public TaskbarWindow(TaskbarViewModel viewModel, TaskbarTheme theme, IWindowChrome chrome, WindowPreviewPopup preview, ILogger<TaskbarWindow> logger)
     {
@@ -39,6 +40,7 @@ public sealed partial class TaskbarWindow : Window
         theme.RegisterResources(Application.Current.Resources);
         InitializeComponent();
         theme.RegisterStyles(Root.Resources);
+        _widgetDrag = new WidgetDragController(viewModel, DragOverlay, () => WidgetDragStarted?.Invoke(this, EventArgs.Empty));
 
         // Window-level x:Bind bindings normally initialize on Window.Activated, but the bar is shown without ever
         // being activated (it must not steal focus), so initialize them explicitly. Idempotent.
@@ -65,6 +67,9 @@ public sealed partial class TaskbarWindow : Window
     public bool AllowClose { get; set; }
 
     public nint Handle => WindowNative.GetWindowHandle(this);
+
+    /// <summary>The user started dragging a widget to reorder it; anything anchored to a widget (a flyout) should close.</summary>
+    public event EventHandler? WidgetDragStarted;
 
     /// <summary>Applies theme, colors, metrics and the backdrop. Everything updates live.</summary>
     public void ApplyAppearance(AppearanceSettings appearance)
@@ -196,6 +201,14 @@ public sealed partial class TaskbarWindow : Window
         if (sender is FrameworkElement item)
         {
             _drag.Attach(item);
+        }
+    }
+
+    private void OnWidgetItemLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement item)
+        {
+            _widgetDrag.Attach(item);
         }
     }
 

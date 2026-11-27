@@ -180,6 +180,7 @@
       <!-- Hosted widget -->
       <DataTemplate x:Key="WidgetTemplate" x:DataType="vm:WidgetSectionViewModel">
         <!-- Fixed-size widgets bind Width; auto-size widgets leave it NaN and are clamped by MinWidth / MaxWidth. -->
+        <!-- Drag to reorder: see WidgetDragController. -->
         <Border Background="{x:Bind Background}"
                 CornerRadius="{Binding ItemCornerRadius, Source={StaticResource SB.Theme}}"
                 Height="{Binding ItemSize, Source={StaticResource SB.Theme}}"
@@ -187,6 +188,7 @@
                 MinWidth="{x:Bind MinWidth}"
                 MaxWidth="{x:Bind MaxWidth}"
                 views:ZoneItem.Collapsed="{x:Bind IsCollapsed, Mode=OneWay}"
+                Loaded="OnWidgetItemLoaded"
                 VerticalAlignment="Center">
           <views:WidgetSlot Element="{x:Bind View, Mode=OneWay}" VerticalAlignment="Stretch" />
         </Border>
@@ -223,6 +225,7 @@
       </ItemsPanelTemplate>
     </Border.Resources>
 
+    <Grid>
     <views:ZonePanel>
       <ItemsControl views:ZonePanel.Zone="Left" ItemsSource="{x:Bind ViewModel.LeftSections}"
                     ItemTemplateSelector="{StaticResource SectionTemplateSelector}"
@@ -237,5 +240,8 @@
                     ItemsPanel="{StaticResource ZoneItemsPanel}"
                     VerticalAlignment="Center" IsTabStop="False" />
     </views:ZonePanel>
+    <!-- Above the zones: the snap glow of a widget drag is drawn here. -->
+    <Canvas x:Name="DragOverlay" IsHitTestVisible="False" />
+    </Grid>
   </Border>
 </Window>

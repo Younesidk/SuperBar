@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
+using SuperBar.Core.Layout;
 using SuperBar.Core.Mvvm;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
@@ -49,9 +50,9 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         _widgetViews = widgetViews;
         _theme = theme;
         _logger = loggerFactory.CreateLogger<TaskbarViewModel>();
-        _start = new StartSectionViewModel("start", shell);
-        Apps = new AppsSectionViewModel("apps", tracker, switcher, launcher, icons, loggerFactory.CreateLogger<AppsSectionViewModel>());
-        _tray = new SystemTraySectionViewModel("tray", shell);
+        _start = new StartSectionViewModel(SectionOrdering.StartKey, shell);
+        Apps = new AppsSectionViewModel(SectionOrdering.AppsKey, tracker, switcher, launcher, icons, loggerFactory.CreateLogger<AppsSectionViewModel>());
+        _tray = new SystemTraySectionViewModel(SectionOrdering.TrayKey, shell);
 
         OpenControlCenterCommand = new RelayCommand(openControlCenter);
         OpenTaskManagerCommand = new RelayCommand(shell.OpenTaskManager);
@@ -71,6 +72,41 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     /// <summary>The on-screen element of a widget instance's slot, or null when it is not shown.</summary>
     public Microsoft.UI.Xaml.FrameworkElement? FindWidgetElement(string instanceId) =>
         _widgetSections.TryGetValue(instanceId, out var section) && section.CurrentElement is { IsLoaded: true } element ? element : null;
+
+    /// <summary>
+    /// The user dragged a section to a new place in its zone: the zone and its section ids in the new order. The
+    /// runtime persists it in the layout.
+    /// </summary>
+    public event Action<TaskbarZone, IReadOnlyList<string>>? SectionOrderChanged;
+
+    /// <summary>
+    /// Moves <paramref name="moved"/> next to <paramref name="neighbor"/> (just after it, or just before) within their
+    /// zone, in place, so every other section keeps its item container. Returns false when they do not share a zone.
+    /// </summary>
+    public bool MoveSection(SectionViewModel moved, SectionViewModel neighbor, bool after)
+    {
+        foreach (var (zone, sections) in new[] { (TaskbarZone.Left, LeftSections), (TaskbarZone.Center, CenterSections), (TaskbarZone.Right, RightSections) })
+        {
+            var from = sections.IndexOf(moved);
+            var anchor = sections.IndexOf(neighbor);
+            if (from < 0 || anchor < 0 || from == anchor)
+            {
+                continue;
+            }
+
+            // Index of the neighbor once the moved section is taken out.
+            var to = (anchor > from ? anchor - 1 : anchor) + (after ? 1 : 0);
+            if (to != from)
+            {
+                sections.Move(from, to);
+                SectionOrderChanged?.Invoke(zone, sections.Select(s => s.Id).ToList());
+            }
+
+            return true;
+        }
+
+        return false;
+    }
 
     public void Apply(SuperBarSettings settings)
     {
@@ -126,7 +162,7 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
             else
             {
                 var host = new WidgetHost(descriptor, instance, _services, _loggerFactory);
-                _widgetSections[instance.InstanceId] = new WidgetSectionViewModel("widget:" + instance.InstanceId, host, _widgetViews, _theme);
+                _widgetSections[instance.InstanceId] = new WidgetSectionViewModel(SectionOrdering.WidgetKey(instance.InstanceId), host, _widgetViews, _theme);
             }
         }
 

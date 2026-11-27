@@ -94,6 +94,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
                 _settings.Update(s => s.PinnedApps = AppOrdering.ReorderPins(s.PinnedApps, keys));
             _viewModel.Apps.PinRequested += (pin, index) => _settings.Update(s => AppOrdering.AddPin(s.PinnedApps, pin, index));
             _viewModel.Apps.UnpinRequested += key => _settings.Update(s => AppOrdering.RemovePin(s.PinnedApps, key));
+            _viewModel.SectionOrderChanged += (zone, keys) => _settings.Update(s => SectionOrdering.ReorderZone(s.Layout, zone, keys));
         }
 
         _viewModel.Apply(settings);
@@ -114,6 +115,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
             windowLogger);
         _window = new TaskbarWindow(_viewModel, theme, chrome, _preview, windowLogger);
         _window.ApplyAppearance(settings.Appearance);
+        _window.WidgetDragStarted += (_, _) => _services.GetRequiredService<WidgetFlyoutCoordinator>().CloseAll();
 
         // Pre-place at the bottom edge (physical pixels) so there is no flash elsewhere; the AppBar takes over immediately.
         var height = (int)Math.Round(settings.Appearance.Height * monitor.Scale);
