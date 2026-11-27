@@ -21,4 +21,7 @@ public sealed class AppPaths : IAppPaths
     /// and a user can read or delete it by hand.
     /// </summary>
     public string RecoveryFilePath => Path.Combine(DataDirectory, "taskbar-recovery.json");
+
+    /// <summary>App badges (overlay icons) kept across a restart of the bar.</summary>
+    public string BadgesFilePath => Path.Combine(DataDirectory, "badges.json");
 }
