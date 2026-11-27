@@ -10,5 +10,9 @@ public interface IControlCenterUi
     /// <summary>Puts <paramref name="text"/> on the clipboard. Call on the UI thread.</summary>
     void CopyText(string text);
 
-    // Phase 3 adds: Task<string?> PickExecutableAsync();
+    /// <summary>
+    /// Lets the user choose an application (.exe) in the system file picker. Returns its full path, or null when they
+    /// cancelled, the window has closed, or the picker could not be shown.
+    /// </summary>
+    Task<string?> PickExecutableAsync();
 }

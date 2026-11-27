@@ -58,6 +58,138 @@ public class SectionOrderingTests
         Assert.Equal(["start", "widget:b", "apps", "widget:a", "tray", "widget:c"], Keys(layout));
     }
 
+    private static string[] Zone(List<SectionPlacement> layout, TaskbarZone zone) =>
+        layout.Where(p => p.Zone == zone).Select(SectionOrdering.Key).ToArray();
+
+    [Fact]
+    public void Shifting_within_a_zone_leaves_the_other_zones_in_their_slots()
+    {
+        var layout = Layout();
+
+        Assert.True(SectionOrdering.Shift(layout, "apps", -1));
+
+        Assert.Equal(["apps", "widget:a", "start", "tray", "widget:b", "widget:c"], Keys(layout));
+    }
+
+    [Fact]
+    public void Shifting_later_within_a_zone_trades_places_with_the_next_entry()
+    {
+        var layout = Layout();
+
+        Assert.True(SectionOrdering.Shift(layout, "p-a", +1));
+
+        Assert.Equal(["tray", "widget:a", "widget:b"], Zone(layout, TaskbarZone.Right));
+        Assert.Equal(["start", "apps"], Zone(layout, TaskbarZone.Left));
+    }
+
+    [Fact]
+    public void Shifting_later_from_the_end_of_left_enters_center_first()
+    {
+        var layout = Layout();
+
+        Assert.True(SectionOrdering.Shift(layout, "apps", +1));
+
+        Assert.Equal(TaskbarZone.Center, layout.Single(p => p.Id == "apps").Zone);
+        Assert.Equal(["start"], Zone(layout, TaskbarZone.Left));
+        Assert.Equal(["apps", "widget:c"], Zone(layout, TaskbarZone.Center));
+    }
+
+    [Fact]
+    public void Shifting_earlier_from_the_start_of_center_enters_left_last()
+    {
+        var layout = Layout();
+
+        Assert.True(SectionOrdering.Shift(layout, "p-c", -1));
+
+        Assert.Equal(TaskbarZone.Left, layout.Single(p => p.Id == "p-c").Zone);
+        Assert.Equal(["start", "apps", "widget:c"], Zone(layout, TaskbarZone.Left));
+        Assert.Empty(Zone(layout, TaskbarZone.Center));
+    }
+
+    [Fact]
+    public void Shifting_later_from_the_end_of_center_enters_right_first()
+    {
+        var layout = Layout();
+
+        Assert.True(SectionOrdering.Shift(layout, "p-c", +1));
+
+        Assert.Equal(["widget:c", "widget:a", "tray", "widget:b"], Zone(layout, TaskbarZone.Right));
+    }
+
+    [Fact]
+    public void Shifting_into_an_empty_zone_makes_it_the_only_entry()
+    {
+        var layout = Layout();
+        layout.RemoveAll(p => p.Zone == TaskbarZone.Center);
+
+        Assert.True(SectionOrdering.Shift(layout, "apps", +1));
+
+        Assert.Equal(["apps"], Zone(layout, TaskbarZone.Center));
+        Assert.Equal(["start"], Zone(layout, TaskbarZone.Left));
+    }
+
+    [Theory]
+    [InlineData("start", -1)]   // first of Left, moving earlier
+    [InlineData("p-b", +1)]     // last of Right, moving later
+    [InlineData("missing", +1)]
+    [InlineData("apps", 0)]
+    public void Shifting_past_the_ends_of_the_bar_changes_nothing(string id, int direction)
+    {
+        var layout = Layout();
+
+        Assert.False(SectionOrdering.Shift(layout, id, direction));
+
+        Assert.Equal(Keys(Layout()), Keys(layout));
+        Assert.Equal(Layout().Select(p => p.Zone), layout.Select(p => p.Zone));
+    }
+
+    [Fact]
+    public void Moving_to_a_zone_appends_the_entry_to_it()
+    {
+        var layout = Layout();
+
+        Assert.True(SectionOrdering.MoveToZone(layout, "start", TaskbarZone.Right));
+
+        Assert.Equal(["widget:a", "tray", "widget:b", "start"], Zone(layout, TaskbarZone.Right));
+        Assert.Equal(["apps"], Zone(layout, TaskbarZone.Left));
+    }
+
+    [Fact]
+    public void Moving_to_an_empty_zone_makes_it_the_only_entry()
+    {
+        var layout = Layout();
+        layout.RemoveAll(p => p.Zone == TaskbarZone.Center);
+
+        Assert.True(SectionOrdering.MoveToZone(layout, "tray", TaskbarZone.Center));
+
+        Assert.Equal(["tray"], Zone(layout, TaskbarZone.Center));
+    }
+
+    [Theory]
+    [InlineData("start", TaskbarZone.Left)]
+    [InlineData("missing", TaskbarZone.Center)]
+    public void Moving_to_the_current_zone_or_an_unknown_entry_changes_nothing(string id, TaskbarZone zone)
+    {
+        var layout = Layout();
+
+        Assert.False(SectionOrdering.MoveToZone(layout, id, zone));
+
+        Assert.Equal(Keys(Layout()), Keys(layout));
+    }
+
+    [Fact]
+    public void CanShift_agrees_with_Shift_for_every_entry_and_direction()
+    {
+        foreach (var id in Layout().Select(p => p.Id).Append("missing"))
+        {
+            foreach (var direction in new[] { -1, 0, +1 })
+            {
+                var expected = SectionOrdering.CanShift(Layout(), id, direction);
+                Assert.Equal(expected, SectionOrdering.Shift(Layout(), id, direction));
+            }
+        }
+    }
+
     [Fact]
     public void Positions_without_a_move_are_the_packed_row() =>
         Assert.Equal([10, 116, 162], SectionOrdering.Positions([100, 40, 60], start: 10, spacing: 6, from: 1, target: 1));

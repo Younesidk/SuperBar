@@ -131,7 +131,7 @@ The recovery record is deliberately a plain JSON file, so it works even if the d
 
 - **Notification-area (tray) icons.** Hosting other apps' tray icons requires implementing the shell's `Shell_TrayWnd` notification protocol. Until then the overflow chevron opens Explorer's own "hidden icons" flyout (via Win+B, then moved next to the bar), so icons shown directly on the native taskbar are not visible in SuperBar.
 - Window thumbnails/previews. Grouped windows currently cycle on click.
-- Pin and unpin from the UI. `.lnk` target resolution for matching shortcuts to running apps. Jump lists.
+- `.lnk` target resolution for matching shortcuts to running apps. Jump lists. (Pinning and unpinning work from the bar's right-click menu and from the Control Center's Applications page.)
 - Drag-and-drop reordering on the bar. The Control Center already supports reorder and zone changes.
 - Per-monitor bars, top-edge placement, auto-hide for SuperBar itself.
 - Start with Windows, Velopack packaging and update feed. The Velopack hook is already wired in `Main`.

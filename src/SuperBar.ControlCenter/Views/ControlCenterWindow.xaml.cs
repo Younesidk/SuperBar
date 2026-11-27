@@ -49,6 +49,61 @@ public sealed partial class ControlCenterWindow : Window
         }
     }
 
+    /// <summary>
+    /// Fills the Applications page's "Pin application" menu each time it opens: the running apps that can be pinned,
+    /// then "Browse". Built in code because a MenuFlyout has no ItemsSource; a MenuFlyout because it closes itself when
+    /// an item is chosen.
+    /// </summary>
+    private void OnPinFlyoutOpening(object sender, object e)
+    {
+        if (sender is not MenuFlyout menu || ViewModel.SelectedPage is not ApplicationsPageViewModel page)
+        {
+            return;
+        }
+
+        menu.Items.Clear();
+        menu.Items.Add(new MenuFlyoutItem { Text = "Running applications", IsEnabled = false });
+
+        var running = page.GetRunningApps();
+        foreach (var app in running)
+        {
+            var item = new MenuFlyoutItem { Text = app.DisplayName };
+            if (app.Icon is { } icon)
+            {
+                item.Icon = new ImageIcon { Source = icon };
+            }
+
+            ToolTipService.SetToolTip(item, app.Path);
+            var path = app.Path;
+            item.Click += (_, _) => page.Pin(path);
+            menu.Items.Add(item);
+        }
+
+        if (running.Count == 0)
+        {
+            menu.Items.Add(new MenuFlyoutItem { Text = "No running applications to pin", IsEnabled = false });
+        }
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var browse = new MenuFlyoutItem { Text = "Browse for an application...", Icon = new FontIcon { Glyph = "\uE8E5" } };
+        browse.Click += (_, _) => page.BrowseAndPin();
+        menu.Items.Add(browse);
+    }
+
+    /// <summary>
+    /// Layout page: a move re-creates the moved item's row (in its new place or zone), which drops keyboard focus.
+    /// When the row's button that started the move is loaded again, it takes the focus back.
+    /// </summary>
+    private void OnLayoutItemButtonLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: LayoutItemViewModel item, Tag: string tag } button
+            && Enum.TryParse<LayoutFocusTarget>(tag, out var target)
+            && item.TakeFocusRequest(target))
+        {
+            button.Focus(FocusState.Programmatic);
+        }
+    }
+
     private void ConfigureBackdrop()
     {
         if (MicaController.IsSupported())

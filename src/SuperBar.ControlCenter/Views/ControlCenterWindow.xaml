@@ -201,37 +201,140 @@
         </views:PageContainer>
       </DataTemplate>
 
-      <!-- Layout -->
+      <!-- Layout: one section in the preview strip (an icon; the name is its tooltip). -->
+      <DataTemplate x:Key="LayoutPreviewItemTemplate" x:DataType="vm:LayoutItemViewModel">
+        <Border Style="{StaticResource InsetCard}" ToolTipService.ToolTip="{x:Bind Name}" AutomationProperties.Name="{x:Bind Name}">
+          <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" />
+        </Border>
+      </DataTemplate>
+
+      <!-- Layout: a preview strip of the bar, then a board with one column per zone. -->
       <DataTemplate x:Key="LayoutPageTemplate" x:DataType="vm:LayoutPageViewModel">
-        <views:PageContainer Title="{x:Bind Title}" Subtitle="{x:Bind Subtitle}">
+        <views:PageContainer Title="{x:Bind Title}" Subtitle="{x:Bind Subtitle}"
+                             ContentMaxWidth="{StaticResource PageMaxWidthWide}">
           <StackPanel>
-            <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10"
-                       Text="Sections are drawn left to right within their zone. The right zone stays anchored to the screen edge; the center zone is centered on the bar." />
-            <ItemsControl ItemsSource="{x:Bind Sections}" IsTabStop="False">
+            <!-- Read-only: the bar's sections in their real left-to-right order. -->
+            <Border Style="{StaticResource Card}">
+              <StackPanel Spacing="{StaticResource SpacingS}">
+                <TextBlock Style="{StaticResource Label}" Text="Bar preview" />
+                <Grid ColumnSpacing="{StaticResource SpacingS}">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <ItemsControl ItemsSource="{x:Bind LeftZone.Items}" HorizontalAlignment="Left" IsTabStop="False"
+                                ItemTemplate="{StaticResource LayoutPreviewItemTemplate}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXS}" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                  </ItemsControl>
+                  <ItemsControl Grid.Column="1" ItemsSource="{x:Bind CenterZone.Items}" HorizontalAlignment="Center" IsTabStop="False"
+                                ItemTemplate="{StaticResource LayoutPreviewItemTemplate}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXS}" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                  </ItemsControl>
+                  <ItemsControl Grid.Column="2" ItemsSource="{x:Bind RightZone.Items}" HorizontalAlignment="Right" IsTabStop="False"
+                                ItemTemplate="{StaticResource LayoutPreviewItemTemplate}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXS}" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                  </ItemsControl>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <!-- Three zone columns when wide, stacked Left / Center / Right when compact. -->
+            <ItemsControl ItemsSource="{x:Bind Zones}" IsTabStop="False">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <views:ResponsiveGrid WideColumns="3" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:LayoutItemViewModel">
-                  <Border Style="{StaticResource Card}" Padding="14,8">
-                    <Grid ColumnSpacing="6">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                      </Grid.ColumnDefinitions>
-                      <TextBlock Style="{StaticResource Label}" Text="{x:Bind Name}" />
-                      <ComboBox Grid.Column="1" Width="120" VerticalAlignment="Center"
-                                ItemsSource="{x:Bind Zones}"
-                                SelectedIndex="{x:Bind ZoneIndex, Mode=TwoWay}"
-                                AutomationProperties.Name="Zone" />
-                      <Button Grid.Column="2" Content="Up" Command="{x:Bind MoveUpCommand}" />
-                      <Button Grid.Column="3" Content="Down" Command="{x:Bind MoveDownCommand}" />
-                    </Grid>
+                <DataTemplate x:DataType="vm:LayoutZoneViewModel">
+                  <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                      <Grid ColumnSpacing="{StaticResource SpacingS}">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                          <TextBlock Style="{StaticResource Label}" Text="{x:Bind Title}" AutomationProperties.HeadingLevel="Level2" />
+                          <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Style="{StaticResource Hint}" VerticalAlignment="Top"
+                                   Text="{x:Bind CountLabel, Mode=OneWay}" />
+                      </Grid>
+                      <!-- Top to bottom = left to right on the bar. -->
+                      <ItemsControl ItemsSource="{x:Bind Items}" IsTabStop="False">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:LayoutItemViewModel">
+                            <Border Style="{StaticResource InsetCard}" Margin="0,6,0,0">
+                              <Grid ColumnSpacing="{StaticResource SpacingXS}">
+                                <Grid.ColumnDefinitions>
+                                  <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="*" />
+                                  <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" Margin="0,0,4,0" VerticalAlignment="Center" Opacity="0.85" />
+                                <TextBlock Grid.Column="1" Style="{StaticResource Label}" Text="{x:Bind Name}"
+                                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" />
+                                <Button Grid.Column="2" Style="{StaticResource SubtleIconButton}" Tag="Earlier"
+                                        Command="{x:Bind MoveEarlierCommand}" IsEnabled="{x:Bind CanMoveEarlier, Mode=OneWay}"
+                                        Loaded="OnLayoutItemButtonLoaded"
+                                        ToolTipService.ToolTip="Move earlier (left)" AutomationProperties.Name="{x:Bind MoveEarlierName}">
+                                  <FontIcon Glyph="&#xE76B;" FontSize="14" />
+                                </Button>
+                                <Button Grid.Column="3" Style="{StaticResource SubtleIconButton}" Tag="Later"
+                                        Command="{x:Bind MoveLaterCommand}" IsEnabled="{x:Bind CanMoveLater, Mode=OneWay}"
+                                        Loaded="OnLayoutItemButtonLoaded"
+                                        ToolTipService.ToolTip="Move later (right)" AutomationProperties.Name="{x:Bind MoveLaterName}">
+                                  <FontIcon Glyph="&#xE76C;" FontSize="14" />
+                                </Button>
+                                <Button Grid.Column="4" Style="{StaticResource SubtleIconButton}" Tag="More"
+                                        Loaded="OnLayoutItemButtonLoaded"
+                                        ToolTipService.ToolTip="Move to zone" AutomationProperties.Name="{x:Bind MoveToZoneName}">
+                                  <FontIcon Glyph="&#xE712;" FontSize="14" />
+                                  <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                      <MenuFlyoutItem Text="Move to left zone" Command="{x:Bind MoveToLeftCommand}"
+                                                      IsEnabled="{x:Bind CanMoveToLeft, Mode=OneWay}" />
+                                      <MenuFlyoutItem Text="Move to center zone" Command="{x:Bind MoveToCenterCommand}"
+                                                      IsEnabled="{x:Bind CanMoveToCenter, Mode=OneWay}" />
+                                      <MenuFlyoutItem Text="Move to right zone" Command="{x:Bind MoveToRightCommand}"
+                                                      IsEnabled="{x:Bind CanMoveToRight, Mode=OneWay}" />
+                                    </MenuFlyout>
+                                  </Button.Flyout>
+                                </Button>
+                              </Grid>
+                            </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <Border Style="{StaticResource InsetCard}" Margin="0,6,0,0" Opacity="0.7"
+                              Visibility="{x:Bind IsEmpty, Mode=OneWay}">
+                        <TextBlock Style="{StaticResource Hint}" HorizontalAlignment="Center" TextAlignment="Center"
+                                   Text="Nothing in this zone. Move items here with the arrows." />
+                      </Border>
+                    </StackPanel>
                   </Border>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
+
             <Border Style="{StaticResource NotImplemented}">
-              <TextBlock Style="{StaticResource Hint}" Text="Planned: drag-and-drop reordering on the bar itself, adding/removing sections, and per-monitor layouts." />
+              <TextBlock Style="{StaticResource Hint}" Text="Planned: drag-and-drop in this view, and per-monitor layouts." />
             </Border>
           </StackPanel>
         </views:PageContainer>
@@ -393,13 +496,32 @@
 
       <!-- Applications -->
       <DataTemplate x:Key="ApplicationsPageTemplate" x:DataType="vm:ApplicationsPageViewModel">
-        <views:PageContainer Title="{x:Bind Title}" Subtitle="{x:Bind Subtitle}">
+        <views:PageContainer Title="{x:Bind Title}" Subtitle="{x:Bind Subtitle}"
+                             ContentMaxWidth="{StaticResource PageMaxWidthWide}">
+          <views:PageContainer.HeaderAction>
+            <Button Style="{StaticResource AccentButtonStyle}" AutomationProperties.Name="Pin application">
+              <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingS}">
+                <FontIcon Glyph="&#xE710;" FontSize="14" />
+                <TextBlock Text="Pin application" />
+              </StackPanel>
+              <Button.Flyout>
+                <!-- Filled in code each time it opens (running apps change); a MenuFlyout closes itself on a choice. -->
+                <MenuFlyout Placement="BottomEdgeAlignedRight" Opening="OnPinFlyoutOpening" />
+              </Button.Flyout>
+            </Button>
+          </views:PageContainer.HeaderAction>
           <StackPanel>
+            <!-- Two columns when wide, one when compact. The path is only in the tooltip. -->
             <ItemsControl ItemsSource="{x:Bind Pinned}" IsTabStop="False">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <views:ResponsiveGrid WideColumns="2" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:PinnedAppItemViewModel">
-                  <Border Style="{StaticResource Card}" Padding="14,10">
-                    <Grid ColumnSpacing="14">
+                  <Border Style="{StaticResource CompactCard}" ToolTipService.ToolTip="{x:Bind AppPath}">
+                    <Grid ColumnSpacing="{StaticResource SpacingM}">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -409,13 +531,17 @@
                         <Image Source="{x:Bind Icon}" Visibility="{x:Bind HasIcon}" Width="32" Height="32" Stretch="Uniform" />
                         <FontIcon Glyph="&#xECAA;" FontSize="22" Visibility="{x:Bind ShowFallbackIcon}" Opacity="0.7" />
                       </Grid>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                      <views:WrapPanel Grid.Column="1" VerticalAlignment="Center"
+                                       HorizontalSpacing="{StaticResource SpacingS}" VerticalSpacing="{StaticResource SpacingXS}">
                         <TextBlock Style="{StaticResource Label}" Text="{x:Bind DisplayName}" />
-                        <TextBlock Style="{StaticResource Hint}" Text="{x:Bind AppPath}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind AppPath}" />
-                      </StackPanel>
+                        <Border Style="{StaticResource PillCaution}" Visibility="{x:Bind IsMissing}"
+                                ToolTipService.ToolTip="The application's file no longer exists at this path.">
+                          <TextBlock Style="{StaticResource PillCautionText}" Text="Missing" />
+                        </Border>
+                      </views:WrapPanel>
                       <Button Grid.Column="2" VerticalAlignment="Center" Command="{x:Bind UnpinCommand}"
-                              AutomationProperties.Name="{x:Bind DisplayName}" ToolTipService.ToolTip="Unpin from taskbar">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                              AutomationProperties.Name="{x:Bind UnpinName}" ToolTipService.ToolTip="Unpin from taskbar">
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingS}">
                           <FontIcon Glyph="&#xE77A;" FontSize="14" />
                           <TextBlock Text="Unpin" />
                         </StackPanel>
@@ -426,7 +552,7 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
             <Border Style="{StaticResource Card}" Visibility="{x:Bind IsEmpty, Mode=OneWay}">
-              <TextBlock Style="{StaticResource Hint}" Text="Nothing is pinned. Right-click an app on the bar and choose Pin to taskbar." />
+              <TextBlock Style="{StaticResource Hint}" Text="Nothing is pinned yet. Use Pin application above, or right-click an app on the bar." />
             </Border>
             <Border Style="{StaticResource NotImplemented}">
               <TextBlock Style="{StaticResource Hint}" Text="Planned: import pins from the Windows taskbar, pinning Store apps, and resolving .lnk shortcuts to match running apps." />

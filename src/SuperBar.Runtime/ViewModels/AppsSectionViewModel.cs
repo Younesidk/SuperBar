@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Media;
@@ -320,24 +319,9 @@ public sealed class AppsSectionViewModel : SectionViewModel
         }
 
         var index = Apps.TakeWhile(a => !ReferenceEquals(a, app)).Count(a => a.IsPinned);
-        var pin = new PinnedApp { DisplayName = FriendlyName(path, app.DisplayName), Path = path };
+        var pin = new PinnedApp { DisplayName = AppIdentity.FriendlyName(path, app.DisplayName), Path = path };
         _logger.LogInformation("Pinning {App} ({Path}) at position {Index}", pin.DisplayName, path, index);
         PinRequested?.Invoke(pin, index);
-    }
-
-    /// <summary>The executable's description ("Notepad", "JetBrains Rider") rather than its file name.</summary>
-    internal static string FriendlyName(string path, string fallback)
-    {
-        try
-        {
-            var info = FileVersionInfo.GetVersionInfo(path);
-            var name = string.IsNullOrWhiteSpace(info.FileDescription) ? info.ProductName : info.FileDescription;
-            return string.IsNullOrWhiteSpace(name) ? fallback : name.Trim();
-        }
-        catch (Exception)
-        {
-            return fallback;
-        }
     }
 
     internal void OnLaunchNew(AppButtonViewModel app)
@@ -390,7 +374,7 @@ public sealed class AppButtonViewModel : ObservableObject
     /// ApplicationFrameHost.exe, which cannot be launched to start them, so they cannot be pinned yet.
     /// </summary>
     public bool CanPin =>
-        !IsPinned && LaunchPath is { } path && !path.EndsWith("ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase);
+        !IsPinned && AppIdentity.IsPinnable(LaunchPath);
 
     public List<TrackedWindow> Windows { get; private set; } = [];
 

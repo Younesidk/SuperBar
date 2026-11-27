@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.Windows.Storage.Pickers;
 using SuperBar.ControlCenter.ViewModels;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -11,6 +12,7 @@ namespace SuperBar.ControlCenter.Views;
 /// </summary>
 public sealed class WindowControlCenterUi : IControlCenterUi
 {
+    private Window? _window;
     private FrameworkElement? _root;
     private bool _dialogOpen;
 
@@ -21,8 +23,13 @@ public sealed class WindowControlCenterUi : IControlCenterUi
     public void Attach(Window window, FrameworkElement root)
     {
         ArgumentNullException.ThrowIfNull(window);
+        _window = window;
         _root = root;
-        window.Closed += (_, _) => _root = null;
+        window.Closed += (_, _) =>
+        {
+            _window = null;
+            _root = null;
+        };
     }
 
     public async Task<bool> ConfirmAsync(string title, string message, string confirmText, bool destructive = false)
@@ -71,6 +78,33 @@ public sealed class WindowControlCenterUi : IControlCenterUi
         var data = new DataPackage();
         data.SetText(text);
         Clipboard.SetContent(data);
+    }
+
+    public async Task<string?> PickExecutableAsync()
+    {
+        // One modal surface at a time, like the dialogs: a picker over an open dialog would be confusing.
+        if (_window is not { } window || _dialogOpen)
+        {
+            return null;
+        }
+
+        // The Windows App SDK picker takes the owner window's id, so it needs no InitializeWithWindow in an unpackaged app.
+        var picker = new FileOpenPicker(window.AppWindow.Id)
+        {
+            CommitButtonText = "Pin",
+        };
+        picker.FileTypeFilter.Add(".exe");
+
+        _dialogOpen = true;
+        try
+        {
+            var result = await picker.PickSingleFileAsync();
+            return string.IsNullOrWhiteSpace(result?.Path) ? null : result.Path;
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
     }
 
     /// <summary>The style under <paramref name="key"/> in the dictionary or any of its merged dictionaries; null when absent.</summary>
