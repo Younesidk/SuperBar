@@ -23,6 +23,8 @@ public sealed class ControlCenterService(IServiceProvider services, IUiDispatche
             return;
         }
 
+        // The view models need the UI service in their constructors; the window attaches it once its content exists.
+        var ui = new WindowControlCenterUi();
         var vm = new ControlCenterViewModel(
             services.GetRequiredService<ISettingsService>(),
             services.GetRequiredService<ITaskbarRuntimeController>(),
@@ -32,9 +34,11 @@ public sealed class ControlCenterService(IServiceProvider services, IUiDispatche
             services.GetRequiredService<IAppPaths>(),
             services.GetRequiredService<IAppLauncher>(),
             services.GetRequiredService<IIconProvider>(),
+            services.GetRequiredService<INativeTaskbarController>(),
+            ui,
             dispatcher);
 
-        var window = new ControlCenterWindow(vm, services.GetRequiredService<IWindowChrome>());
+        var window = new ControlCenterWindow(vm, services.GetRequiredService<IWindowChrome>(), ui);
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(_window, window))

@@ -33,6 +33,8 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
         IAppPaths paths,
         IAppLauncher launcher,
         IIconProvider icons,
+        INativeTaskbarController nativeTaskbar,
+        IControlCenterUi ui,
         IUiDispatcher dispatcher)
     {
         _runtime = runtime;
@@ -41,12 +43,12 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
 
         Pages = (PageViewModel[])
         [
-            new GeneralPageViewModel(settings, runtime),
+            new GeneralPageViewModel(settings, runtime, ui),
             new AppearancePageViewModel(settings, dispatcher),
             new LayoutPageViewModel(settings, widgets),
             new WidgetsPageViewModel(settings, widgets, settingsEditors, store, dispatcher),
             new ApplicationsPageViewModel(settings, icons, dispatcher),
-            new AboutPageViewModel(paths, launcher),
+            new AboutPageViewModel(paths, launcher, settings, nativeTaskbar, ui, dispatcher),
         ];
         _selectedPage = Pages[0];
     }
@@ -148,21 +150,18 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
 {
     private readonly ISettingsService _settings;
     private readonly ITaskbarRuntimeController _runtime;
+    private readonly IControlCenterUi _ui;
     private bool _hideNativeTaskbar;
 
-    public GeneralPageViewModel(ISettingsService settings, ITaskbarRuntimeController runtime)
+    public GeneralPageViewModel(ISettingsService settings, ITaskbarRuntimeController runtime, IControlCenterUi ui)
         : base("General", "\uE713", "Turn SuperBar on or off and control how it replaces the Windows taskbar.")
     {
         _settings = settings;
         _runtime = runtime;
+        _ui = ui;
         _hideNativeTaskbar = settings.Current.Behavior.HideNativeTaskbar;
         runtime.StateChanged += OnRuntimeStateChanged;
-        ExitCommand = new RelayCommand(runtime.Exit);
-        ResetCommand = new RelayCommand(() =>
-        {
-            _settings.ResetToDefaults();
-            HideNativeTaskbar = _settings.Current.Behavior.HideNativeTaskbar;
-        });
+        ResetCommand = new RelayCommand(ConfirmAndReset);
     }
 
     public bool IsSuperBarEnabled
@@ -200,9 +199,45 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
         }
     }
 
-    public ICommand ExitCommand { get; }
-
+    /// <summary>Asks first, then puts every setting back to its default.</summary>
     public ICommand ResetCommand { get; }
+
+    // The About page's "Restore Windows taskbar" turns HideNativeTaskbar off while this view model stays alive.
+    public override void OnNavigatedTo() => SyncFromSettings();
+
+    private async void ConfirmAndReset()
+    {
+        try
+        {
+            var confirmed = await _ui.ConfirmAsync(
+                "Reset all settings?",
+                "Appearance, layout, widgets and pinned applications go back to their defaults. This cannot be undone.",
+                "Reset",
+                destructive: true);
+            if (!confirmed)
+            {
+                return;
+            }
+
+            _settings.ResetToDefaults();
+            SyncFromSettings();
+        }
+        catch (Exception)
+        {
+            // async void: nothing may escape. A dialog that fails to show resets nothing.
+        }
+    }
+
+    /// <summary>Re-reads the cached setting without writing it back (the property setter would call Update).</summary>
+    private void SyncFromSettings()
+    {
+        var hide = _settings.Current.Behavior.HideNativeTaskbar;
+        if (hide != _hideNativeTaskbar)
+        {
+            _hideNativeTaskbar = hide;
+            OnPropertyChanged(nameof(HideNativeTaskbar));
+        }
+    }
 
     private void OnRuntimeStateChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(IsSuperBarEnabled));
 
@@ -211,7 +246,15 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
 
 public sealed class AppearancePageViewModel : PageViewModel
 {
-    private static readonly string[] SwatchColors = ["#5B8CFF", "#8B6CFF", "#2FBF9B", "#F2A541", "#F2545B", "#E8E8EC"];
+    private static readonly (string Name, string Hex)[] SwatchColors =
+    [
+        ("Blue", "#5B8CFF"),
+        ("Violet", "#8B6CFF"),
+        ("Teal", "#2FBF9B"),
+        ("Amber", "#F2A541"),
+        ("Red", "#F2545B"),
+        ("White", "#E8E8EC"),
+    ];
 
     private readonly ISettingsService _settings;
     private readonly Debouncer _debounce;
@@ -244,7 +287,52 @@ public sealed class AppearancePageViewModel : PageViewModel
                 Accent = color;
             }
         });
-        AccentSwatches = SwatchColors.Select(hex => new AccentSwatchViewModel(hex, SetAccentCommand)).ToList();
+        AccentSwatches = SwatchColors.Select(c => new AccentSwatchViewModel(c.Name, c.Hex, SetAccentCommand)).ToList();
+        UpdateSwatchSelection();
+    }
+
+    /// <summary>
+    /// Re-reads every value from the settings without writing anything back: "Reset all settings" on the General page
+    /// changes them while this view model stays alive. Skipped while this page has edits of its own still queued,
+    /// because those are newer than the stored values.
+    /// </summary>
+    public override void OnNavigatedTo()
+    {
+        if (_pendingChanges is not null)
+        {
+            return;
+        }
+
+        var a = _settings.Current.Appearance;
+        _height = a.Height;
+        _opacity = a.BackgroundOpacity;
+        _cornerRadius = a.ItemCornerRadius;
+        _spacing = a.ItemSpacing;
+        _darkTheme = a.Theme == ThemeMode.Dark;
+        _useAcrylic = a.UseAcrylic;
+        _accent = a.AccentColor;
+
+        OnPropertyChanged(nameof(TaskbarHeight));
+        OnPropertyChanged(nameof(TaskbarHeightLabel));
+        OnPropertyChanged(nameof(BackgroundOpacity));
+        OnPropertyChanged(nameof(BackgroundOpacityLabel));
+        OnPropertyChanged(nameof(CornerRadius));
+        OnPropertyChanged(nameof(CornerRadiusLabel));
+        OnPropertyChanged(nameof(ItemSpacing));
+        OnPropertyChanged(nameof(ItemSpacingLabel));
+        OnPropertyChanged(nameof(DarkTheme));
+        OnPropertyChanged(nameof(UseAcrylic));
+        OnPropertyChanged(nameof(Accent));
+        UpdateSwatchSelection();
+    }
+
+    // A stored accent that matches no swatch (edited by hand) leaves none selected.
+    private void UpdateSwatchSelection()
+    {
+        foreach (var swatch in AccentSwatches)
+        {
+            swatch.IsSelected = string.Equals(swatch.Hex, _accent, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     public double MinHeight => AppearanceSettings.MinHeight;
@@ -318,7 +406,18 @@ public sealed class AppearancePageViewModel : PageViewModel
 
     public bool UseAcrylic { get => _useAcrylic; set { if (SetProperty(ref _useAcrylic, value)) Push(s => s.Appearance.UseAcrylic = value); } }
 
-    public string Accent { get => _accent; set { if (SetProperty(ref _accent, value)) Push(s => s.Appearance.AccentColor = value); } }
+    public string Accent
+    {
+        get => _accent;
+        set
+        {
+            if (SetProperty(ref _accent, value))
+            {
+                UpdateSwatchSelection();
+                Push(s => s.Appearance.AccentColor = value);
+            }
+        }
+    }
 
     internal static string FormatPx(double value) => string.Create(CultureInfo.CurrentCulture, $"{value:0} px");
 
@@ -341,23 +440,61 @@ public sealed class AppearancePageViewModel : PageViewModel
     }
 }
 
-/// <summary>One accent color button: its own brush and command, so the template needs no ancestor binding.</summary>
-public sealed class AccentSwatchViewModel
+/// <summary>
+/// One accent color button: its own brush, command and selection state, so the template needs no ancestor binding.
+/// </summary>
+public sealed class AccentSwatchViewModel : ObservableObject
 {
-    public AccentSwatchViewModel(string hex, ICommand selectCommand)
+    // Swatches at least this bright get a black check mark, darker ones a white one.
+    private const double LightLuminance = 0.6;
+
+    private bool _isSelected;
+
+    public AccentSwatchViewModel(string name, string hex, ICommand selectCommand)
     {
+        Name = name;
         Hex = hex;
         SelectCommand = selectCommand;
         var c = ColorHex.ParseOrDefault(hex, new ArgbColor(0xFF, 0x80, 0x80, 0x80));
         Brush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(c.A, c.R, c.G, c.B));
+        CheckBrush = new SolidColorBrush(RelativeLuminance(c) >= LightLuminance
+            ? global::Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00)
+            : global::Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF));
     }
+
+    /// <summary>The color's friendly name ("Blue"), for the tooltip and screen readers.</summary>
+    public string Name { get; }
 
     public string Hex { get; }
 
     public SolidColorBrush Brush { get; }
 
+    /// <summary>The check mark's color: readable on this swatch (black on light colors, white on dark ones).</summary>
+    public SolidColorBrush CheckBrush { get; }
+
+    public string AccessibleName => Name;
+
+    /// <summary>True for the swatch of the current accent color.</summary>
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
+
     /// <summary>Selects this color; the command parameter is <see cref="Hex"/>.</summary>
     public ICommand SelectCommand { get; }
+
+    /// <summary>WCAG relative luminance (0 black .. 1 white) of an sRGB color.</summary>
+    private static double RelativeLuminance(ArgbColor c)
+    {
+        static double Linear(byte channel)
+        {
+            var v = channel / 255d;
+            return v <= 0.03928 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
+        }
+
+        return 0.2126 * Linear(c.R) + 0.7152 * Linear(c.G) + 0.0722 * Linear(c.B);
+    }
 }
 
 public sealed class LayoutPageViewModel : PageViewModel
@@ -588,21 +725,104 @@ public sealed class PinnedAppItemViewModel
 
 public sealed class AboutPageViewModel : PageViewModel
 {
-    public AboutPageViewModel(IAppPaths paths, IAppLauncher launcher)
+    private const string CopyGlyphIdle = "\uE8C8";
+    private const string CopyGlyphDone = "\uE73E";
+
+    private readonly ISettingsService _settings;
+    private readonly INativeTaskbarController _nativeTaskbar;
+    private readonly IControlCenterUi _ui;
+    private readonly Debouncer _copiedReset;
+    private bool _isCopied;
+    private string _restoreStatus = "";
+
+    public AboutPageViewModel(
+        IAppPaths paths,
+        IAppLauncher launcher,
+        ISettingsService settings,
+        INativeTaskbarController nativeTaskbar,
+        IControlCenterUi ui,
+        IUiDispatcher dispatcher)
         : base("About", "\uE946", "Version, data locations and diagnostics.")
     {
+        _settings = settings;
+        _nativeTaskbar = nativeTaskbar;
+        _ui = ui;
+        _copiedReset = new Debouncer(dispatcher, TimeSpan.FromMilliseconds(1500));
         DataDirectory = paths.DataDirectory;
         LogDirectory = paths.LogDirectory;
         OpenDataFolderCommand = new RelayCommand(() => launcher.Launch(paths.DataDirectory));
         OpenLogFolderCommand = new RelayCommand(() => launcher.Launch(paths.LogDirectory));
+        CopyRestoreCommand = new RelayCommand(CopyRestore);
+        RestoreTaskbarCommand = new RelayCommand(RestoreTaskbar);
     }
 
     public string Version { get; } = AppInfo.Version;
+    public string VersionPill => "v" + Version;
+    public string Tagline => "A modern replacement for the Windows taskbar. Foundation milestone.";
     public string DataDirectory { get; }
     public string LogDirectory { get; }
-    public string VersionLabel => $"SuperBar {Version} - foundation milestone";
     public string DataDirectoryLabel => $"Data: {DataDirectory}";
     public string LogDirectoryLabel => $"Logs: {LogDirectory}";
     public ICommand OpenDataFolderCommand { get; }
     public ICommand OpenLogFolderCommand { get; }
+
+    /// <summary>The command line that brings a stuck Windows taskbar back.</summary>
+    public string RestoreCommandText => "SuperBar.exe --restore-taskbar";
+
+    /// <summary>Copies <see cref="RestoreCommandText"/>; the button shows a check mark for a moment.</summary>
+    public ICommand CopyRestoreCommand { get; }
+
+    /// <summary>True for a short while after <see cref="CopyRestoreCommand"/>.</summary>
+    public bool IsCopied
+    {
+        get => _isCopied;
+        private set
+        {
+            if (SetProperty(ref _isCopied, value))
+            {
+                OnPropertyChanged(nameof(CopyGlyph));
+            }
+        }
+    }
+
+    public string CopyGlyph => _isCopied ? CopyGlyphDone : CopyGlyphIdle;
+
+    /// <summary>Brings the Windows taskbar back now and turns "Hide the Windows taskbar" off. No confirmation: the safe direction.</summary>
+    public ICommand RestoreTaskbarCommand { get; }
+
+    /// <summary>What the last <see cref="RestoreTaskbarCommand"/> did; empty until it runs.</summary>
+    public string RestoreStatus
+    {
+        get => _restoreStatus;
+        private set
+        {
+            if (SetProperty(ref _restoreStatus, value))
+            {
+                OnPropertyChanged(nameof(HasRestoreStatus));
+            }
+        }
+    }
+
+    public bool HasRestoreStatus => _restoreStatus.Length > 0;
+
+    private void CopyRestore()
+    {
+        _ui.CopyText(RestoreCommandText);
+        IsCopied = true;
+        _copiedReset.Run(() => IsCopied = false);
+    }
+
+    private void RestoreTaskbar()
+    {
+        // Turning the setting off is what makes the runtime restore the taskbar and move the bar off it; calling the
+        // controller alone would leave the setting on and the bar overlapping the taskbar.
+        if (_settings.Current.Behavior.HideNativeTaskbar)
+        {
+            _settings.Update(s => s.Behavior.HideNativeTaskbar = false);
+        }
+
+        // Idempotent; also covers a taskbar left hidden while SuperBar is paused.
+        _nativeTaskbar.Restore();
+        RestoreStatus = "The Windows taskbar is back. 'Hide the Windows taskbar' is now off; turn it on again under General.";
+    }
 }

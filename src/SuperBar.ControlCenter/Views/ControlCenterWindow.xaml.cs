@@ -26,10 +26,11 @@ public sealed partial class ControlCenterWindow : Window
     private const int MinWidthDip = 760;
     private const int MinHeightDip = 540;
 
-    public ControlCenterWindow(ControlCenterViewModel viewModel, IWindowChrome chrome)
+    public ControlCenterWindow(ControlCenterViewModel viewModel, IWindowChrome chrome, WindowControlCenterUi ui)
     {
         ViewModel = viewModel;
         InitializeComponent();
+        ui.Attach(this, Root);
 
         ConfigureBackdrop();
         ConfigureWindow(chrome.GetScale(WindowNative.GetWindowHandle(this)));

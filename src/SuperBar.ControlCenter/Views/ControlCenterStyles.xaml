@@ -74,6 +74,14 @@
     <Setter Property="IsTextSelectionEnabled" Value="True" />
   </Style>
 
+  <!-- The product name in a hero card (About). -->
+  <Style x:Key="HeroTitle" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="20" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
   <!-- ===== Surfaces ===== -->
 
   <!--
@@ -120,6 +128,18 @@
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{StaticResource InsetCornerRadius}" />
     <Setter Property="Padding" Value="10,6" />
+  </Style>
+
+  <!--
+    The app tile of a hero card: a 56 px accent square. Put one centered FontIcon inside (FontSize 24,
+    Foreground TextOnAccentFillColorPrimaryBrush).
+  -->
+  <Style x:Key="HeroTile" TargetType="Border">
+    <Setter Property="Width" Value="56" />
+    <Setter Property="Height" Value="56" />
+    <Setter Property="CornerRadius" Value="14" />
+    <Setter Property="Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
   <!-- ===== Pills (badges) ===== -->

@@ -27,7 +27,7 @@
         <views:PageContainer Title="{x:Bind Title}" Subtitle="{x:Bind Subtitle}">
           <StackPanel>
             <Border Style="{StaticResource Card}">
-              <Grid ColumnSpacing="16">
+              <Grid ColumnSpacing="{StaticResource SpacingL}">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*" />
                   <ColumnDefinition Width="Auto" />
@@ -41,7 +41,7 @@
               </Grid>
             </Border>
             <Border Style="{StaticResource Card}">
-              <Grid ColumnSpacing="16">
+              <Grid ColumnSpacing="{StaticResource SpacingL}">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*" />
                   <ColumnDefinition Width="Auto" />
@@ -55,33 +55,53 @@
               </Grid>
             </Border>
             <Border Style="{StaticResource Card}">
-              <Grid ColumnSpacing="16">
+              <Grid ColumnSpacing="{StaticResource SpacingL}">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*" />
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel>
-                  <TextBlock Style="{StaticResource Label}" Text="Start with Windows" />
-                  <TextBlock Style="{StaticResource Hint}" Text="Not implemented yet - planned together with the Velopack installer." />
+                  <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingS}">
+                    <TextBlock Style="{StaticResource Label}" Text="Start with Windows" />
+                    <Border Style="{StaticResource PillCaution}">
+                      <TextBlock Style="{StaticResource PillCautionText}" Text="Coming soon" />
+                    </Border>
+                  </StackPanel>
+                  <TextBlock Style="{StaticResource Hint}" Text="Planned together with the installer." />
                 </StackPanel>
                 <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsEnabled="False"
                               AutomationProperties.Name="Start with Windows" />
               </Grid>
             </Border>
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
-              <Button Content="Reset all settings" Command="{x:Bind ResetCommand}" />
-              <Button Content="Exit SuperBar" Command="{x:Bind ExitCommand}" />
-            </StackPanel>
+
+            <!-- Destructive actions live apart from the safe ones; Exit is in the navigation pane's footer. -->
+            <TextBlock Style="{StaticResource SectionHeader}" Text="Reset" />
+            <Border Style="{StaticResource DangerCard}">
+              <Grid ColumnSpacing="{StaticResource SpacingL}">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                  <TextBlock Style="{StaticResource Label}" Text="Reset all settings" />
+                  <TextBlock Style="{StaticResource Hint}" Text="Puts appearance, layout, widgets and pinned applications back to their defaults." />
+                </StackPanel>
+                <Button Grid.Column="1" Style="{StaticResource DangerButton}" Content="Reset..."
+                        Command="{x:Bind ResetCommand}" AutomationProperties.Name="Reset all settings" />
+              </Grid>
+            </Border>
           </StackPanel>
         </views:PageContainer>
       </DataTemplate>
 
       <!-- Appearance -->
       <DataTemplate x:Key="AppearancePageTemplate" x:DataType="vm:AppearancePageViewModel">
-        <views:PageContainer Title="{x:Bind Title}" Subtitle="{x:Bind Subtitle}">
-          <StackPanel>
+        <views:PageContainer Title="{x:Bind Title}" Subtitle="{x:Bind Subtitle}"
+                             ContentMaxWidth="{StaticResource PageMaxWidthWide}">
+          <!-- Two columns when wide, one when compact; cards in a row are equally tall. -->
+          <views:ResponsiveGrid>
             <Border Style="{StaticResource Card}">
-              <StackPanel Spacing="4">
+              <StackPanel Spacing="{StaticResource SpacingXS}">
                 <Grid>
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -95,7 +115,7 @@
               </StackPanel>
             </Border>
             <Border Style="{StaticResource Card}">
-              <StackPanel Spacing="4">
+              <StackPanel Spacing="{StaticResource SpacingXS}">
                 <Grid>
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -106,7 +126,7 @@
                 </Grid>
                 <Slider Minimum="0.2" Maximum="1" StepFrequency="0.01" Value="{x:Bind BackgroundOpacity, Mode=TwoWay}"
                         AutomationProperties.Name="Background opacity" />
-                <Grid Margin="0,6,0,0" ColumnSpacing="16">
+                <Grid Margin="0,6,0,0" ColumnSpacing="{StaticResource SpacingL}">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -118,7 +138,7 @@
               </StackPanel>
             </Border>
             <Border Style="{StaticResource Card}">
-              <StackPanel Spacing="4">
+              <StackPanel Spacing="{StaticResource SpacingXS}">
                 <Grid>
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -143,7 +163,7 @@
             </Border>
             <Border Style="{StaticResource Card}">
               <StackPanel Spacing="10">
-                <Grid ColumnSpacing="16">
+                <Grid ColumnSpacing="{StaticResource SpacingL}">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -156,23 +176,28 @@
                 <ItemsControl ItemsSource="{x:Bind AccentSwatches}" IsTabStop="False">
                   <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                      <StackPanel Orientation="Horizontal" Spacing="8" />
+                      <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXS}" />
                     </ItemsPanelTemplate>
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:AccentSwatchViewModel">
-                      <Button Style="{StaticResource SwatchButton}"
-                              Background="{x:Bind Brush}"
-                              Command="{x:Bind SelectCommand}"
-                              CommandParameter="{x:Bind Hex}"
-                              ToolTipService.ToolTip="{x:Bind Hex}"
-                              AutomationProperties.Name="{x:Bind Hex}" />
+                      <Grid Width="36" Height="36">
+                        <!-- Selection ring: outside the swatch, so it reads on every color. -->
+                        <Ellipse Stroke="{ThemeResource TextFillColorPrimaryBrush}" StrokeThickness="2"
+                                 Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                        <Button Style="{StaticResource SwatchButton}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Background="{x:Bind Brush}"
+                                Command="{x:Bind SelectCommand}" CommandParameter="{x:Bind Hex}"
+                                ToolTipService.ToolTip="{x:Bind Name}" AutomationProperties.Name="{x:Bind AccessibleName}" />
+                        <FontIcon Glyph="&#xE73E;" FontSize="12" IsHitTestVisible="False"
+                                  Foreground="{x:Bind CheckBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                      </Grid>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
               </StackPanel>
             </Border>
-          </StackPanel>
+          </views:ResponsiveGrid>
         </views:PageContainer>
       </DataTemplate>
 
@@ -414,22 +439,61 @@
       <DataTemplate x:Key="AboutPageTemplate" x:DataType="vm:AboutPageViewModel">
         <views:PageContainer Title="{x:Bind Title}" Subtitle="{x:Bind Subtitle}">
           <StackPanel>
+            <!-- Hero: app tile, name and version. -->
             <Border Style="{StaticResource Card}">
-              <StackPanel Spacing="6">
-                <TextBlock Style="{StaticResource Label}" Text="{x:Bind VersionLabel}" />
+              <Grid ColumnSpacing="{StaticResource SpacingL}">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource HeroTile}">
+                  <FontIcon Glyph="&#xE90E;" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="{StaticResource SpacingXS}">
+                  <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingS}">
+                    <TextBlock Style="{StaticResource HeroTitle}" Text="SuperBar" />
+                    <Border Style="{StaticResource Pill}">
+                      <TextBlock Style="{StaticResource PillText}" Text="{x:Bind VersionPill}" />
+                    </Border>
+                  </StackPanel>
+                  <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Tagline}" />
+                </StackPanel>
+              </Grid>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+              <StackPanel Spacing="{StaticResource SpacingXS}">
+                <TextBlock Style="{StaticResource Label}" Text="Data and diagnostics" />
                 <TextBlock Style="{StaticResource Hint}" Text="{x:Bind DataDirectoryLabel}" IsTextSelectionEnabled="True" />
                 <TextBlock Style="{StaticResource Hint}" Text="{x:Bind LogDirectoryLabel}" IsTextSelectionEnabled="True" />
-                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                <!-- Wraps instead of clipping at the window's minimum width. -->
+                <views:WrapPanel Margin="0,8,0,0" HorizontalSpacing="{StaticResource SpacingS}" VerticalSpacing="{StaticResource SpacingS}">
                   <Button Content="Open data folder" Command="{x:Bind OpenDataFolderCommand}" />
                   <Button Content="Open log folder" Command="{x:Bind OpenLogFolderCommand}" />
-                </StackPanel>
+                  <Button Content="Restore Windows taskbar" Command="{x:Bind RestoreTaskbarCommand}" />
+                </views:WrapPanel>
+                <TextBlock Style="{StaticResource Hint}" Margin="0,4,0,0" Text="{x:Bind RestoreStatus, Mode=OneWay}"
+                           Visibility="{x:Bind HasRestoreStatus, Mode=OneWay}" AutomationProperties.LiveSetting="Polite" />
               </StackPanel>
             </Border>
+
             <Border Style="{StaticResource Card}">
-              <StackPanel Spacing="4">
-                <TextBlock Style="{StaticResource Label}" Text="If the Windows taskbar ever stays hidden" />
-                <TextBlock Style="{StaticResource Hint}" IsTextSelectionEnabled="True"
-                           Text="Start SuperBar again (it restores the taskbar automatically), or run:  SuperBar.exe --restore-taskbar" />
+              <StackPanel Spacing="{StaticResource SpacingS}">
+                <StackPanel Spacing="{StaticResource SpacingXS}">
+                  <TextBlock Style="{StaticResource Label}" Text="If the Windows taskbar ever stays hidden" />
+                  <TextBlock Style="{StaticResource Hint}"
+                             Text="Start SuperBar again; it restores the taskbar automatically. Or run this from a terminal:" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingXS}">
+                  <Border Style="{StaticResource CodeBlock}">
+                    <TextBlock Style="{StaticResource CodeText}" Text="{x:Bind RestoreCommandText}" />
+                  </Border>
+                  <Button Style="{StaticResource SubtleIconButton}" Command="{x:Bind CopyRestoreCommand}"
+                          ToolTipService.ToolTip="Copy" AutomationProperties.Name="Copy command">
+                    <FontIcon Glyph="{x:Bind CopyGlyph, Mode=OneWay}" FontSize="14" />
+                  </Button>
+                </StackPanel>
               </StackPanel>
             </Border>
           </StackPanel>
