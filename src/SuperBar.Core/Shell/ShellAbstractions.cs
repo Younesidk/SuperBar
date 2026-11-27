@@ -110,7 +110,15 @@ public interface IShellEvents
 }
 
 /// <summary>A top-level window that would appear on a taskbar.</summary>
-public sealed record TrackedWindow(nint Handle, string Title, int ProcessId, string? ProcessPath);
+/// <param name="IsFlashing">The window asked for attention (FlashWindowEx) and has not been activated since.</param>
+/// <param name="OverlayIcon">The badge the app put on its taskbar button (ITaskbarList3::SetOverlayIcon), if any.</param>
+public sealed record TrackedWindow(
+    nint Handle,
+    string Title,
+    int ProcessId,
+    string? ProcessPath,
+    bool IsFlashing = false,
+    IconPixels? OverlayIcon = null);
 
 public interface IWindowTracker
 {
@@ -119,7 +127,7 @@ public interface IWindowTracker
     /// <summary>The most recently activated tracked window (SuperBar's own windows are ignored).</summary>
     nint ActiveWindow { get; }
 
-    /// <summary>Raised when windows are added, removed, retitled or activated.</summary>
+    /// <summary>Raised when windows are added, removed, retitled, activated, start flashing or change their badge.</summary>
     event EventHandler? WindowsChanged;
 
     void Start();

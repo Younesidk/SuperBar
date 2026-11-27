@@ -24,6 +24,7 @@ public static class WindowsServiceCollectionExtensions
         services.AddSingleton<IMonitorService, MonitorService>();
         services.AddSingleton<IAppBarService, AppBarService>();
         services.AddSingleton<INativeTaskbarController, NativeTaskbarController>();
+        services.AddSingleton<TaskbarListHost>();
         services.AddSingleton<IWindowTracker, WindowTracker>();
         services.AddSingleton<IWindowSwitcher, WindowSwitcher>();
         services.AddSingleton<IAppLauncher, AppLauncher>();

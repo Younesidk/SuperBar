@@ -476,6 +476,23 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool PostMessage(nint hWnd, uint msg, nint wParam, nint lParam);
 
+    public const uint WM_USER = 0x0400;
+
+    // Undocumented: the shell's task-switching window (Explorer's task band, MSTaskSwWClass).
+    [DllImport("user32.dll")]
+    public static extern nint GetTaskmanWindow();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetProp(nint hWnd, string lpString, nint hData);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern nint GetProp(nint hWnd, string lpString);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SendNotifyMessage(nint hWnd, uint msg, nint wParam, nint lParam);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool ChangeWindowMessageFilterEx(nint hwnd, uint message, uint action, nint pChangeFilterStruct);

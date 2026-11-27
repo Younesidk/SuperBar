@@ -143,16 +143,27 @@
                       AutomationProperties.Name="{x:Bind DisplayName, Mode=OneWay}">
                 <Grid Width="{Binding ItemSize, Source={StaticResource SB.Theme}}"
                       Height="{Binding ItemSize, Source={StaticResource SB.Theme}}">
-                  <Image Source="{x:Bind Icon, Mode=OneWay}"
-                         Visibility="{x:Bind HasIcon, Mode=OneWay}"
-                         Width="{Binding IconSize, Source={StaticResource SB.Theme}}"
-                         Height="{Binding IconSize, Source={StaticResource SB.Theme}}"
-                         Stretch="Uniform"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" />
-                  <TextBlock Text="{x:Bind Initial, Mode=OneWay}"
-                             Visibility="{x:Bind ShowInitial, Mode=OneWay}"
-                             Style="{StaticResource SbText}" FontSize="15"
-                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  <!-- Red "needs attention" plate: the app flashed its window (FlashWindowEx). -->
+                  <views:AttentionHighlight IsFlashing="{x:Bind IsFlashing, Mode=OneWay}"
+                                            Background="{StaticResource SB.Attention}"
+                                            CornerRadius="{Binding ItemCornerRadius, Source={StaticResource SB.Theme}}" />
+                  <Grid Width="{Binding IconSize, Source={StaticResource SB.Theme}}"
+                        Height="{Binding IconSize, Source={StaticResource SB.Theme}}"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Image Source="{x:Bind Icon, Mode=OneWay}"
+                           Visibility="{x:Bind HasIcon, Mode=OneWay}"
+                           Stretch="Uniform" />
+                    <TextBlock Text="{x:Bind Initial, Mode=OneWay}"
+                               Visibility="{x:Bind ShowInitial, Mode=OneWay}"
+                               Style="{StaticResource SbText}" FontSize="15"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <!-- The app's overlay icon (ITaskbarList3::SetOverlayIcon): unread count, status. -->
+                    <Image Source="{x:Bind Badge, Mode=OneWay}"
+                           Visibility="{x:Bind HasBadge, Mode=OneWay}"
+                           Width="16" Height="16" Stretch="Uniform"
+                           HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                           Margin="0,0,-5,-4" />
+                  </Grid>
                   <views:RunningIndicator IsActive="{x:Bind IsActive, Mode=OneWay}"
                                           Visibility="{x:Bind IsRunning, Mode=OneWay}"
                                           ActiveBrush="{StaticResource SB.Accent}"

@@ -59,6 +59,9 @@ public sealed class TaskbarTheme : ObservableObject
     public SolidColorBrush WidgetBackground { get; } = new();
     public SolidColorBrush Track { get; } = new();
     public SolidColorBrush Accent { get; } = new();
+
+    /// <summary>The red plate of an app button whose window asks for attention.</summary>
+    public SolidColorBrush Attention { get; } = new();
     public SolidColorBrush Transparent { get; } = new(Color.FromArgb(0, 0, 0, 0));
 
     // --- Metrics ----------------------------------------------------------------------------------------------
@@ -100,6 +103,7 @@ public sealed class TaskbarTheme : ObservableObject
         WidgetBackground.Color = ToColor(ink.WithAlpha(0x12));
         Track.Color = ToColor(ink.WithAlpha(0x26));
         Accent.Color = ToColor(accent.WithAlpha(0xFF));
+        Attention.Color = ToColor(dark ? new ArgbColor(0xB3, 0xD1, 0x34, 0x38) : new ArgbColor(0x99, 0xE8, 0x11, 0x23));
 
         var itemSize = Math.Max(24, a.Height - 12);
         ItemSize = itemSize;
@@ -135,6 +139,7 @@ public sealed class TaskbarTheme : ObservableObject
         resources["SB.WidgetBackground"] = WidgetBackground;
         resources["SB.Track"] = Track;
         resources["SB.Accent"] = Accent;
+        resources["SB.Attention"] = Attention;
         resources["SB.Transparent"] = Transparent;
         _registered = true;
     }

@@ -12,6 +12,7 @@ namespace SuperBar.Windows.Windows;
 internal sealed class WindowTracker : IWindowTracker, IDisposable
 {
     private readonly ShellMessageWindow _shell;
+    private readonly TaskbarListHost _taskbarList;
     private readonly ILogger<WindowTracker> _logger;
     private readonly List<TrackedWindow> _windows = new();
     private readonly HashSet<nint> _ignored = new();
@@ -19,9 +20,10 @@ internal sealed class WindowTracker : IWindowTracker, IDisposable
     private uint _shellHookMessage;
     private bool _started;
 
-    public WindowTracker(ShellMessageWindow shell, ILogger<WindowTracker> logger)
+    public WindowTracker(ShellMessageWindow shell, TaskbarListHost taskbarList, ILogger<WindowTracker> logger)
     {
         _shell = shell;
+        _taskbarList = taskbarList;
         _logger = logger;
     }
 
@@ -59,8 +61,53 @@ internal sealed class WindowTracker : IWindowTracker, IDisposable
             ActiveWindow = fg;
         }
 
+        _taskbarList.OverlayIconChanged += OnOverlayIconChanged;
+        _taskbarList.Claimed += OnTaskbarListClaimed;
+        _taskbarList.Start();
+
         _logger.LogInformation("Window tracker started with {Count} windows", _windows.Count);
         WindowsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnTaskbarListClaimed(object? sender, EventArgs e) =>
+        _taskbarList.RequestRefresh(_windows.Select(w => w.Handle).ToList());
+
+    private void OnOverlayIconChanged(nint hwnd, IconPixels? icon)
+    {
+        var index = IndexOf(hwnd);
+        if (index < 0)
+        {
+            return;
+        }
+
+        _windows[index] = _windows[index] with { OverlayIcon = icon };
+        WindowsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// A window called FlashWindowEx. Like Explorer, the button keeps asking for attention until the window is
+    /// activated, even after the app stops flashing its caption. The active window cannot ask for attention.
+    /// </summary>
+    private void OnFlash(nint hwnd)
+    {
+        var index = IndexOf(hwnd);
+        if (index < 0 || _windows[index].IsFlashing || hwnd == GetForegroundWindow())
+        {
+            return;
+        }
+
+        _logger.LogDebug("Window 0x{Handle:X} asks for attention", hwnd);
+        _windows[index] = _windows[index] with { IsFlashing = true };
+        WindowsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void StopFlashing(nint hwnd)
+    {
+        var index = IndexOf(hwnd);
+        if (index >= 0 && _windows[index].IsFlashing)
+        {
+            _windows[index] = _windows[index] with { IsFlashing = false };
+        }
     }
 
     /// <summary>Excludes one of SuperBar's own surfaces from tracking.</summary>
@@ -104,14 +151,19 @@ internal sealed class WindowTracker : IWindowTracker, IDisposable
             case HSHELL_RUDEAPPACTIVATED:
                 // Activation is also where previously cloaked windows (UWP) first become eligible.
                 TryAdd(hwnd, raise: false);
+                StopFlashing(hwnd);
                 ActiveWindow = ResolveActiveWindow(ActiveWindow, hwnd, IndexOf(hwnd) >= 0, GetForegroundWindow(), IsOwnWindow, IsIconic);
 
                 WindowsChanged?.Invoke(this, EventArgs.Empty);
                 break;
 
             case HSHELL_REDRAW:
+                Refresh(hwnd);
+                break;
+
             case HSHELL_FLASH:
                 Refresh(hwnd);
+                OnFlash(hwnd);
                 break;
 
             case HSHELL_WINDOWREPLACED:
@@ -284,6 +336,9 @@ internal sealed class WindowTracker : IWindowTracker, IDisposable
         if (_started)
         {
             _shell.MessageReceived -= OnMessage;
+            _taskbarList.OverlayIconChanged -= OnOverlayIconChanged;
+            _taskbarList.Claimed -= OnTaskbarListClaimed;
+            _taskbarList.Dispose();
             DeregisterShellHookWindow(_shell.Handle);
         }
     }

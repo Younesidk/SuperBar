@@ -32,15 +32,17 @@ internal sealed class NativeTaskbarController : INativeTaskbarController, IDispo
 
     private readonly ITaskbarRecoveryStore _recovery;
     private readonly ILogger<NativeTaskbarController> _logger;
+    private readonly TaskbarListHost _taskbarList;
     private readonly Lock _gate = new();
     private readonly WinEventProc _showHookProc;
     private readonly int _uiThreadId = Environment.CurrentManagedThreadId;
     private nint _showHook;
     private nint _hookedTaskbar;
 
-    public NativeTaskbarController(ITaskbarRecoveryStore recovery, ShellMessageWindow shell, ILogger<NativeTaskbarController> logger)
+    public NativeTaskbarController(ITaskbarRecoveryStore recovery, ShellMessageWindow shell, TaskbarListHost taskbarList, ILogger<NativeTaskbarController> logger)
     {
         _recovery = recovery;
+        _taskbarList = taskbarList;
         _logger = logger;
         _showHookProc = OnWindowShown;
         shell.ExplorerRestarted += OnExplorerRestarted;
@@ -82,6 +84,9 @@ internal sealed class NativeTaskbarController : INativeTaskbarController, IDispo
             // 4. Keep it hidden.
             InstallShowHook(taskbar);
 
+            // 5. Take over the app requests meant for its buttons (badges).
+            _taskbarList.Claim();
+
             State = NativeTaskbarState.Hidden;
             _logger.LogInformation("Native taskbar hidden (original state 0x{State:X}, auto-hide changed: {Changed})", original, changeAutoHide);
         }
@@ -98,6 +103,7 @@ internal sealed class NativeTaskbarController : INativeTaskbarController, IDispo
             }
 
             RemoveShowHook();
+            _taskbarList.Release();
             RestoreFrom(record);
             State = NativeTaskbarState.Visible;
         }
@@ -114,6 +120,7 @@ internal sealed class NativeTaskbarController : INativeTaskbarController, IDispo
             }
 
             _logger.LogWarning("Found taskbar recovery record from a previous session (pid {Pid}, {When}); restoring native taskbar", record.ProcessId, record.ChangedAtUtc);
+            _taskbarList.Release();
             RestoreFrom(record);
             State = NativeTaskbarState.Visible;
             return true;
@@ -140,6 +147,7 @@ internal sealed class NativeTaskbarController : INativeTaskbarController, IDispo
 
             ShowWindow(taskbar, SW_HIDE);
             InstallShowHook(taskbar);
+            _taskbarList.Claim();
             _logger.LogInformation("Re-hid native taskbar after Explorer restart");
         }
     }

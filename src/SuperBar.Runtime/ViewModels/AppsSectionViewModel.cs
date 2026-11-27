@@ -164,7 +164,7 @@ public sealed class AppsSectionViewModel : SectionViewModel
                 vm = new AppButtonViewModel(key, this);
             }
 
-            vm.Update(pin, windows, active, ResolveIcon(pin, windows));
+            vm.Update(pin, windows, active, ResolveIcon(pin, windows), _icons.ForPixels(ResolveBadge(windows, active)));
 
             var currentIndex = Apps.IndexOf(vm);
             if (currentIndex < 0)
@@ -182,6 +182,14 @@ public sealed class AppsSectionViewModel : SectionViewModel
             Apps.RemoveAt(Apps.Count - 1);
         }
     }
+
+    /// <summary>
+    /// The badge a grouped button shows: the active window's, else the first one any of its windows set
+    /// (apps such as Discord badge only their main window).
+    /// </summary>
+    internal static IconPixels? ResolveBadge(IReadOnlyList<TrackedWindow> windows, nint activeWindow) =>
+        windows.FirstOrDefault(w => w.Handle == activeWindow && w.OverlayIcon is not null)?.OverlayIcon
+        ?? windows.FirstOrDefault(w => w.OverlayIcon is not null)?.OverlayIcon;
 
     private ImageSource? ResolveIcon(PinnedApp? pin, List<TrackedWindow> windows)
     {
@@ -293,6 +301,8 @@ public sealed class AppButtonViewModel : ObservableObject
     private bool _isActive;
     private bool _hasMultipleWindows;
     private bool _isHovered;
+    private bool _isFlashing;
+    private ImageSource? _badge;
 
     public AppButtonViewModel(string key, AppsSectionViewModel owner)
     {
@@ -364,7 +374,25 @@ public sealed class AppButtonViewModel : ObservableObject
 
     public bool CanLaunch => LaunchPath is not null;
 
-    internal void Update(PinnedApp? pin, List<TrackedWindow> windows, nint activeWindow, ImageSource? icon)
+    /// <summary>One of the app's windows asked for attention and has not been looked at yet.</summary>
+    public bool IsFlashing { get => _isFlashing; private set => SetProperty(ref _isFlashing, value); }
+
+    /// <summary>The app's overlay icon (unread count, status), drawn over the corner of its icon.</summary>
+    public ImageSource? Badge
+    {
+        get => _badge;
+        private set
+        {
+            if (SetProperty(ref _badge, value))
+            {
+                OnPropertyChanged(nameof(HasBadge));
+            }
+        }
+    }
+
+    public bool HasBadge => _badge is not null;
+
+    internal void Update(PinnedApp? pin, List<TrackedWindow> windows, nint activeWindow, ImageSource? icon, ImageSource? badge = null)
     {
         Windows = windows;
         IsPinned = pin is not null;
@@ -381,6 +409,8 @@ public sealed class AppButtonViewModel : ObservableObject
         IsRunning = windows.Count > 0;
         HasMultipleWindows = windows.Count > 1;
         IsActive = activeWindow != 0 && windows.Any(w => w.Handle == activeWindow);
+        IsFlashing = windows.Any(w => w.IsFlashing);
+        Badge = badge;
         ToolTip = windows.Count == 0 ? DisplayName : null;
     }
 }

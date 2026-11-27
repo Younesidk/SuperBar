@@ -141,6 +141,79 @@ public sealed partial class RunningIndicator : Grid
 }
 
 /// <summary>
+/// The red "needs attention" plate behind an application button, shown when one of its windows flashes
+/// (FlashWindowEx: a new message, an incoming call). Like the Windows taskbar it pulses a few times (smooth fades),
+/// then stays lit until the window is activated, when it fades out.
+/// </summary>
+public sealed partial class AttentionHighlight : Grid
+{
+    public const int Blinks = 4;
+    public const double DimOpacity = 0.2;
+    public static readonly TimeSpan BlinkDuration = TimeSpan.FromMilliseconds(1100);
+    public static readonly TimeSpan FadeOutDuration = TimeSpan.FromMilliseconds(250);
+
+    public static readonly DependencyProperty IsFlashingProperty = DependencyProperty.Register(
+        nameof(IsFlashing), typeof(bool), typeof(AttentionHighlight), new PropertyMetadata(false, (d, _) => ((AttentionHighlight)d).Update()));
+
+    private Storyboard? _storyboard;
+
+    public AttentionHighlight()
+    {
+        IsHitTestVisible = false;
+        Opacity = 0;
+        Loaded += (_, _) => Update();
+    }
+
+    public bool IsFlashing { get => (bool)GetValue(IsFlashingProperty); set => SetValue(IsFlashingProperty, value); }
+
+    private void Update()
+    {
+        // Continue from wherever a running animation left the plate, so interruptions never jump.
+        var current = Opacity;
+        _storyboard?.Stop();
+        _storyboard = null;
+
+        if (!IsLoaded)
+        {
+            Opacity = IsFlashing ? 1 : 0;
+            return;
+        }
+
+        Opacity = current;
+        var animation = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.HoldEnd };
+        if (IsFlashing)
+        {
+            // Breathe: fade in, fade most of the way out, a few times; then fade in and stay lit.
+            var half = BlinkDuration / 2;
+            for (var i = 0; i < Blinks; i++)
+            {
+                var start = BlinkDuration * i;
+                animation.KeyFrames.Add(Eased(start + half, 1));
+                animation.KeyFrames.Add(Eased(start + BlinkDuration, DimOpacity));
+            }
+
+            animation.KeyFrames.Add(Eased(BlinkDuration * Blinks + half, 1));
+        }
+        else
+        {
+            animation.KeyFrames.Add(Eased(FadeOutDuration, 0));
+        }
+
+        Storyboard.SetTarget(animation, this);
+        Storyboard.SetTargetProperty(animation, nameof(Opacity));
+        _storyboard = new Storyboard { Children = { animation } };
+        _storyboard.Begin();
+    }
+
+    private static EasingDoubleKeyFrame Eased(TimeSpan at, double value) => new()
+    {
+        KeyTime = KeyTime.FromTimeSpan(at),
+        Value = value,
+        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+    };
+}
+
+/// <summary>
 /// Collapses a zone item completely: the template root and the items control's container around it, so the zone's
 /// panel adds no spacing for it either. Set on the root of an item template.
 /// </summary>
