@@ -340,15 +340,18 @@
         </views:PageContainer>
       </DataTemplate>
 
-      <!-- Widgets: generated settings fields, one template per kind -->
+      <!--
+        Widgets: generated settings fields, one template per kind. They are stacked by the inspector's ItemsControl
+        (which owns the gap between them), so they carry no margin of their own.
+      -->
       <DataTemplate x:Key="ToggleFieldTemplate" x:DataType="vm:ToggleSettingViewModel">
-        <Grid ColumnSpacing="16" Margin="0,6,0,0">
+        <Grid ColumnSpacing="{StaticResource SpacingL}">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
           <StackPanel VerticalAlignment="Center">
-            <TextBlock Text="{x:Bind Label}" TextWrapping="Wrap" />
+            <TextBlock Style="{StaticResource Label}" Text="{x:Bind Label}" />
             <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" Visibility="{x:Bind HasDescription}" />
           </StackPanel>
           <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsOn="{x:Bind Value, Mode=TwoWay}"
@@ -356,33 +359,35 @@
         </Grid>
       </DataTemplate>
       <DataTemplate x:Key="ChoiceFieldTemplate" x:DataType="vm:ChoiceSettingViewModel">
-        <Grid ColumnSpacing="16" Margin="0,6,0,0">
+        <Grid ColumnSpacing="{StaticResource SpacingL}">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
           <StackPanel VerticalAlignment="Center">
-            <TextBlock Text="{x:Bind Label}" TextWrapping="Wrap" />
+            <TextBlock Style="{StaticResource Label}" Text="{x:Bind Label}" />
             <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" Visibility="{x:Bind HasDescription}" />
           </StackPanel>
-          <ComboBox Grid.Column="1" MinWidth="160" VerticalAlignment="Center" ItemsSource="{x:Bind Options}"
-                    SelectedIndex="{x:Bind SelectedIndex, Mode=TwoWay}" AutomationProperties.Name="{x:Bind Label}" />
+          <ComboBox Grid.Column="1" MinWidth="{StaticResource SettingControlMinWidth}" VerticalAlignment="Center"
+                    ItemsSource="{x:Bind Options}" SelectedIndex="{x:Bind SelectedIndex, Mode=TwoWay}"
+                    AutomationProperties.Name="{x:Bind Label}" />
         </Grid>
       </DataTemplate>
       <DataTemplate x:Key="NumberFieldTemplate" x:DataType="vm:NumberSettingViewModel">
-        <StackPanel Margin="0,6,0,0">
-          <Grid ColumnSpacing="16">
+        <StackPanel Spacing="{StaticResource SpacingXS}">
+          <Grid ColumnSpacing="{StaticResource SpacingL}">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel VerticalAlignment="Center">
-              <TextBlock Text="{x:Bind Label}" TextWrapping="Wrap" />
+              <TextBlock Style="{StaticResource Label}" Text="{x:Bind Label}" />
               <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" Visibility="{x:Bind HasDescription}" />
             </StackPanel>
             <TextBlock Grid.Column="1" Style="{StaticResource Hint}" VerticalAlignment="Center"
                        Text="{x:Bind ValueLabel, Mode=OneWay}" Visibility="{x:Bind HasRange}" />
-            <NumberBox Grid.Column="1" MinWidth="120" VerticalAlignment="Center" SpinButtonPlacementMode="Compact"
+            <NumberBox Grid.Column="1" MinWidth="{StaticResource SettingControlMinWidth}" VerticalAlignment="Center"
+                       SpinButtonPlacementMode="Compact"
                        Minimum="{x:Bind Minimum}" Maximum="{x:Bind Maximum}" SmallChange="{x:Bind Step}"
                        Value="{x:Bind Value, Mode=TwoWay}" Visibility="{x:Bind UsesNumberBox}"
                        AutomationProperties.Name="{x:Bind Label}" />
@@ -393,8 +398,8 @@
         </StackPanel>
       </DataTemplate>
       <DataTemplate x:Key="TextFieldTemplate" x:DataType="vm:TextSettingViewModel">
-        <StackPanel Margin="0,6,0,0" Spacing="4">
-          <TextBlock Text="{x:Bind Label}" TextWrapping="Wrap" />
+        <StackPanel Spacing="{StaticResource SpacingXS}">
+          <TextBlock Style="{StaticResource Label}" Text="{x:Bind Label}" />
           <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" Visibility="{x:Bind HasDescription}" />
           <TextBox Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{x:Bind Label}" />
         </StackPanel>
@@ -405,92 +410,241 @@
                                           Number="{StaticResource NumberFieldTemplate}"
                                           Text="{StaticResource TextFieldTemplate}" />
 
-      <!-- Widgets -->
-      <DataTemplate x:Key="WidgetsPageTemplate" x:DataType="vm:WidgetsPageViewModel">
-        <views:PageContainer Title="{x:Bind Title}" Subtitle="{x:Bind Subtitle}">
-          <StackPanel>
-            <TextBlock Style="{StaticResource Label}" Text="On the bar" Margin="0,0,0,8" />
-            <ItemsControl ItemsSource="{x:Bind Instances}" IsTabStop="False">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:WidgetItemViewModel">
-                  <Border Style="{StaticResource Card}">
-                    <StackPanel Spacing="6">
-                      <Grid ColumnSpacing="14">
-                        <Grid.ColumnDefinitions>
-                          <ColumnDefinition Width="Auto" />
-                          <ColumnDefinition Width="*" />
-                          <ColumnDefinition Width="Auto" />
-                          <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <FontIcon Glyph="{x:Bind Glyph}" FontSize="20" VerticalAlignment="Center" Opacity="0.85" />
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                          <TextBlock Style="{StaticResource Label}" Text="{x:Bind DisplayName}" />
-                          <TextBlock Style="{StaticResource Hint}" Text="{x:Bind ZoneLabel}" />
-                        </StackPanel>
-                        <Button Grid.Column="2" VerticalAlignment="Center" Command="{x:Bind RemoveCommand}"
-                                ToolTipService.ToolTip="Remove from the bar" AutomationProperties.Name="{x:Bind RemoveLabel}">
-                          <StackPanel Orientation="Horizontal" Spacing="8">
-                            <FontIcon Glyph="&#xE74D;" FontSize="14" />
-                            <TextBlock Text="Remove" />
-                          </StackPanel>
-                        </Button>
-                        <ToggleSwitch Grid.Column="3" Style="{StaticResource CardToggle}" IsOn="{x:Bind Enabled, Mode=TwoWay}"
-                                      AutomationProperties.Name="{x:Bind DisplayName}" />
-                      </Grid>
-                      <Grid Margin="0,6,0,0" Visibility="{x:Bind CanResize}">
-                        <Grid.ColumnDefinitions>
-                          <ColumnDefinition Width="*" />
-                          <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="Slot width" />
-                        <TextBlock Grid.Column="1" Style="{StaticResource Hint}" Text="{x:Bind WidthLabel, Mode=OneWay}" />
-                      </Grid>
-                      <Slider Minimum="{x:Bind MinWidth}" Maximum="{x:Bind MaxWidth}" StepFrequency="1"
-                              Value="{x:Bind Width, Mode=TwoWay}" AutomationProperties.Name="Slot width"
-                              Visibility="{x:Bind CanResize}" />
-                      <ItemsControl ItemsSource="{x:Bind Fields}" IsTabStop="False" Visibility="{x:Bind HasGeneratedForm}"
-                                    ItemTemplateSelector="{StaticResource SettingFieldTemplateSelector}" />
-                      <ContentControl Content="{x:Bind CustomEditor}" Visibility="{x:Bind HasCustomEditor}"
-                                      HorizontalContentAlignment="Stretch" IsTabStop="False" Margin="0,6,0,0" />
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <Border Style="{StaticResource Card}" Visibility="{x:Bind IsEmpty, Mode=OneWay}">
-              <TextBlock Style="{StaticResource Hint}" Text="No widgets on the bar. Add one below." />
-            </Border>
+      <!--
+        Widgets: one tile of the "On the bar" grid. Every tile has the same three single-line rows, so all tiles are
+        equally tall. The tile is one button (select); the switch is its sibling, laid over the top right corner, and
+        the selection ring is an overlay shown with Opacity, so selecting a tile changes no size anywhere.
+      -->
+      <DataTemplate x:Key="WidgetTileTemplate" x:DataType="vm:WidgetItemViewModel">
+        <Grid Margin="{StaticResource CardMargin}">
+          <Button Style="{StaticResource TileButton}" Command="{x:Bind SelectCommand}"
+                  AutomationProperties.Name="{x:Bind SelectName, Mode=OneWay}">
+            <StackPanel Spacing="{StaticResource SpacingS}" Opacity="{x:Bind ContentOpacity, Mode=OneWay}">
+              <Border Style="{StaticResource IconTile}">
+                <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" />
+              </Border>
+              <TextBlock Style="{StaticResource Label}" Text="{x:Bind DisplayName}"
+                         TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind DisplayName}" />
+              <Border Style="{StaticResource Pill}">
+                <TextBlock Style="{StaticResource PillText}" Text="{x:Bind ZoneLabel, Mode=OneWay}" />
+              </Border>
+            </StackPanel>
+          </Button>
+          <Border Style="{StaticResource SelectionRing}" Opacity="{x:Bind SelectionOpacity, Mode=OneWay}" />
+          <!-- Same padding as the button and as tall as the icon tile, so the switch lines up with the icon. -->
+          <Grid Padding="{StaticResource CardPaddingCompact}" HorizontalAlignment="Right" VerticalAlignment="Top">
+            <Grid Height="{StaticResource IconTileSize}">
+              <ToggleSwitch Style="{StaticResource CardToggle}" IsOn="{x:Bind Enabled, Mode=TwoWay}"
+                            ToolTipService.ToolTip="Show on the bar" AutomationProperties.Name="{x:Bind EnabledName}" />
+            </Grid>
+          </Grid>
+        </Grid>
+      </DataTemplate>
 
-            <TextBlock Style="{StaticResource Label}" Text="Add a widget" Margin="0,16,0,8" />
-            <ItemsControl ItemsSource="{x:Bind Types}" IsTabStop="False">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:WidgetTypeViewModel">
-                  <Border Style="{StaticResource Card}">
-                    <Grid ColumnSpacing="14">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                      </Grid.ColumnDefinitions>
-                      <FontIcon Glyph="{x:Bind Glyph}" FontSize="20" VerticalAlignment="Center" Opacity="0.85" />
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource Label}" Text="{x:Bind DisplayName}" />
-                        <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" />
-                        <TextBlock Style="{StaticResource Hint}" Text="{x:Bind AvailabilityHint}" Opacity="0.8" />
-                      </StackPanel>
-                      <Button Grid.Column="2" VerticalAlignment="Center" Command="{x:Bind AddCommand}" IsEnabled="{x:Bind CanAdd}"
-                              AutomationProperties.Name="{x:Bind AddLabel}" ToolTipService.ToolTip="Add to the bar">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                          <FontIcon Glyph="&#xE710;" FontSize="14" />
-                          <TextBlock Text="Add" />
-                        </StackPanel>
-                      </Button>
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </StackPanel>
+      <!--
+        Widgets: one widget's layer of the inspector. All layers are stacked in one cell and stay measured (see
+        views:SwitchLayer), so the inspector is as tall as its tallest layer and selecting another widget moves
+        nothing. Header and footer are single-line and sit in the first and last row of a stretched grid: they are at
+        the same place in every layer.
+      -->
+      <DataTemplate x:Key="WidgetInspectorTemplate" x:DataType="vm:WidgetItemViewModel">
+        <views:SwitchLayer IsActive="{x:Bind IsSelected, Mode=OneWay}">
+          <Grid RowSpacing="{StaticResource SpacingM}">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Header: which widget this is. -->
+            <Grid ColumnSpacing="{StaticResource SpacingM}" MinHeight="{StaticResource IconTileSize}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Border Style="{StaticResource IconTile}">
+                <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" />
+              </Border>
+              <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource Label}" Text="{x:Bind DisplayName}" AutomationProperties.HeadingLevel="Level3"
+                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}"
+                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Description}" />
+              </StackPanel>
+            </Grid>
+
+            <StackPanel Grid.Row="1" Spacing="{StaticResource SpacingM}">
+              <!-- Where it is on the bar, and how wide. -->
+              <StackPanel Spacing="{StaticResource SpacingM}" Visibility="{x:Bind HasPlacementControls, Mode=OneWay}">
+                <Border Style="{StaticResource Divider}" />
+                <Grid ColumnSpacing="{StaticResource SpacingL}" Visibility="{x:Bind IsPlaced, Mode=OneWay}">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource Label}" Text="Zone" />
+                    <TextBlock Style="{StaticResource Hint}" Text="Drag it on the bar to change its order." />
+                  </StackPanel>
+                  <ComboBox Grid.Column="1" MinWidth="{StaticResource SettingControlMinWidth}" VerticalAlignment="Center"
+                            SelectedIndex="{x:Bind ZoneIndex, Mode=TwoWay}" AutomationProperties.Name="Zone">
+                    <x:String>Left</x:String>
+                    <x:String>Center</x:String>
+                    <x:String>Right</x:String>
+                  </ComboBox>
+                </Grid>
+                <StackPanel Spacing="{StaticResource SpacingXS}" Visibility="{x:Bind CanResize}">
+                  <Grid ColumnSpacing="{StaticResource SpacingL}">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Label}" Text="Slot width" />
+                    <TextBlock Grid.Column="1" Style="{StaticResource Hint}" VerticalAlignment="Center"
+                               Text="{x:Bind WidthLabel, Mode=OneWay}" />
+                  </Grid>
+                  <Slider Minimum="{x:Bind MinWidth}" Maximum="{x:Bind MaxWidth}" StepFrequency="1"
+                          Value="{x:Bind Width, Mode=TwoWay}" AutomationProperties.Name="Slot width" />
+                </StackPanel>
+              </StackPanel>
+
+              <!-- The widget's own settings: the generated form, or its custom editor. -->
+              <Border Style="{StaticResource Divider}" />
+              <ItemsControl ItemsSource="{x:Bind Fields}" IsTabStop="False" Visibility="{x:Bind HasGeneratedForm}"
+                            ItemTemplateSelector="{StaticResource SettingFieldTemplateSelector}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Spacing="{StaticResource SpacingM}" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+              </ItemsControl>
+              <ContentControl Content="{x:Bind CustomEditor}" Visibility="{x:Bind HasCustomEditor}"
+                              HorizontalContentAlignment="Stretch" IsTabStop="False" />
+              <TextBlock Style="{StaticResource Hint}" Text="This widget has no settings of its own."
+                         Visibility="{x:Bind HasNoSettings}" />
+            </StackPanel>
+
+            <!-- Footer: the destructive action, apart from everything else and confirmed before it runs. -->
+            <StackPanel Grid.Row="2" Spacing="{StaticResource SpacingM}">
+              <Border Style="{StaticResource Divider}" />
+              <Grid ColumnSpacing="{StaticResource SpacingL}">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource Hint}" VerticalAlignment="Center"
+                           Text="Removing a widget also deletes its settings." />
+                <Button Grid.Column="1" Style="{StaticResource DangerButton}" Command="{x:Bind RemoveCommand}"
+                        AutomationProperties.Name="{x:Bind RemoveLabel}">
+                  <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingS}">
+                    <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                    <TextBlock Text="Remove from bar" />
+                  </StackPanel>
+                </Button>
+              </Grid>
+            </StackPanel>
+          </Grid>
+        </views:SwitchLayer>
+      </DataTemplate>
+
+      <!-- Widgets: the tiles on the left and the inspector on the right when wide; the inspector below the tiles when compact. -->
+      <DataTemplate x:Key="WidgetsPageTemplate" x:DataType="vm:WidgetsPageViewModel">
+        <views:PageContainer Title="{x:Bind Title}" Subtitle="{x:Bind Subtitle}"
+                             ContentMaxWidth="{StaticResource PageMaxWidthWide}">
+          <views:PageContainer.HeaderAction>
+            <Button Style="{StaticResource AccentButtonStyle}" AutomationProperties.Name="Add widget">
+              <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingS}">
+                <FontIcon Glyph="&#xE710;" FontSize="14" />
+                <TextBlock Text="Add widget" />
+              </StackPanel>
+              <Button.Flyout>
+                <!-- The catalog: every widget type. A Flyout does not close itself, so the Add buttons close it. -->
+                <Flyout Placement="BottomEdgeAlignedRight" Opening="OnWidgetCatalogOpening">
+                  <StackPanel Width="{StaticResource FlyoutContentWidth}" Spacing="{StaticResource SpacingM}">
+                    <StackPanel>
+                      <TextBlock Style="{StaticResource Label}" Text="Add a widget" />
+                      <TextBlock Style="{StaticResource Hint}" Text="A new widget goes to its usual zone and is selected, ready to set up." />
+                    </StackPanel>
+                    <ItemsControl ItemsSource="{x:Bind Types}" IsTabStop="False">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Spacing="{StaticResource SpacingS}" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:WidgetTypeViewModel">
+                          <Border Style="{StaticResource InsetCard}">
+                            <Grid ColumnSpacing="{StaticResource SpacingM}">
+                              <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                              </Grid.ColumnDefinitions>
+                              <FontIcon Glyph="{x:Bind Glyph}" FontSize="20" VerticalAlignment="Center" Opacity="0.85" />
+                              <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource Label}" Text="{x:Bind DisplayName}" />
+                                <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Description}" />
+                              </StackPanel>
+                              <Button Grid.Column="2" VerticalAlignment="Center" Command="{x:Bind AddCommand}"
+                                      Click="OnWidgetCatalogAddClick" Visibility="{x:Bind CanAdd, Mode=OneWay}"
+                                      AutomationProperties.Name="{x:Bind AddLabel}" ToolTipService.ToolTip="{x:Bind AddToolTip}">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingS}">
+                                  <FontIcon Glyph="&#xE710;" FontSize="14" />
+                                  <TextBlock Text="Add" />
+                                </StackPanel>
+                              </Button>
+                              <!-- A single-instance widget that is on the bar: no button, and the reason why. -->
+                              <Border Grid.Column="2" Style="{StaticResource Pill}" Visibility="{x:Bind IsAlreadyOnBar, Mode=OneWay}"
+                                      ToolTipService.ToolTip="Only one of this widget can be on the bar.">
+                                <TextBlock Style="{StaticResource PillText}" Text="Already on bar" />
+                              </Border>
+                            </Grid>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+          </views:PageContainer.HeaderAction>
+
+          <!-- Two halves when wide; stacked when compact (the row gap then separates the tiles from the inspector). -->
+          <views:ResponsiveGrid ColumnSpacing="{StaticResource SpacingL}" RowSpacing="{StaticResource SpacingS}">
+            <StackPanel>
+              <TextBlock Style="{StaticResource SectionHeader}" Margin="0,0,0,8" Text="On the bar" />
+              <!-- In the bar's left-to-right order. Two columns at every size: a tile needs no more than half a column. -->
+              <ItemsControl ItemsSource="{x:Bind Instances}" IsTabStop="False" Loaded="OnWidgetTilesLoaded"
+                            ItemTemplate="{StaticResource WidgetTileTemplate}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <views:ResponsiveGrid WideColumns="2" CompactColumns="2" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+              </ItemsControl>
+              <Border Style="{StaticResource Card}" Visibility="{x:Bind IsEmpty, Mode=OneWay}">
+                <TextBlock Style="{StaticResource Hint}" Text="No widgets on the bar. Use Add widget above." />
+              </Border>
+            </StackPanel>
+
+            <StackPanel>
+              <TextBlock Style="{StaticResource SectionHeader}" Margin="0,0,0,8" Text="Settings" />
+              <Border Style="{StaticResource Card}" Visibility="{x:Bind HasWidgets, Mode=OneWay}">
+                <!-- One layer per widget, all in the same cell; only the selected widget's layer is shown. -->
+                <ItemsControl ItemsSource="{x:Bind Inspectors}" IsTabStop="False"
+                              ItemTemplate="{StaticResource WidgetInspectorTemplate}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <Grid />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                </ItemsControl>
+              </Border>
+              <Border Style="{StaticResource Card}" Visibility="{x:Bind IsEmpty, Mode=OneWay}">
+                <TextBlock Style="{StaticResource Hint}" Text="The settings of the selected widget appear here." />
+              </Border>
+            </StackPanel>
+          </views:ResponsiveGrid>
         </views:PageContainer>
       </DataTemplate>
 

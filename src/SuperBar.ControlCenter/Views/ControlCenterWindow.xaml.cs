@@ -35,11 +35,21 @@ public sealed partial class ControlCenterWindow : Window
         ConfigureBackdrop();
         ConfigureWindow(chrome.GetScale(WindowNative.GetWindowHandle(this)));
 
+        // The pages live exactly as long as this window, so there is nothing to unsubscribe.
+        foreach (var widgets in ViewModel.Pages.OfType<WidgetsPageViewModel>())
+        {
+            widgets.TileFocusRequested += OnWidgetTileFocusRequested;
+        }
+
         Root.Loaded += (_, _) => Navigation.SelectedItem = ViewModel.SelectedPage;
         Closed += (_, _) => ViewModel.Dispose();
     }
 
     public ControlCenterViewModel ViewModel { get; }
+
+    // Widgets page: the open catalog flyout and the tile grid of the page template's current instance.
+    private Flyout? _widgetCatalog;
+    private ItemsControl? _widgetTiles;
 
     private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
@@ -102,6 +112,54 @@ public sealed partial class ControlCenterWindow : Window
         {
             button.Focus(FocusState.Programmatic);
         }
+    }
+
+    /// <summary>Widgets page: remembers the catalog flyout while it is open, so an Add button can close it.</summary>
+    private void OnWidgetCatalogOpening(object? sender, object e) => _widgetCatalog = sender as Flyout;
+
+    /// <summary>
+    /// Widgets page: a Flyout stays open when something inside is clicked. Adding a widget closes the catalog, so the
+    /// new tile and its settings are in view. The button's command does the adding.
+    /// </summary>
+    private void OnWidgetCatalogAddClick(object sender, RoutedEventArgs e) => _widgetCatalog?.Hide();
+
+    /// <summary>Widgets page: the tile grid of the page as it is shown now (the template is instantiated on each visit).</summary>
+    private void OnWidgetTilesLoaded(object sender, RoutedEventArgs e) => _widgetTiles = sender as ItemsControl;
+
+    /// <summary>
+    /// Widgets page: removing a widget takes the focused "Remove from bar" button out of the tree. Keyboard focus
+    /// goes to the tile that is selected now. Queued, so the removal has been laid out first.
+    /// </summary>
+    private void OnWidgetTileFocusRequested(WidgetItemViewModel item) => DispatcherQueue.TryEnqueue(() =>
+    {
+        if (_widgetTiles is { IsLoaded: true } tiles
+            && tiles.ContainerFromItem(item) is { } container
+            && FirstDescendant<Button>(container) is { } tile)
+        {
+            tile.Focus(FocusState.Programmatic);
+        }
+    });
+
+    /// <summary>The first element of type <typeparamref name="T"/> below <paramref name="root"/>, depth first.</summary>
+    private static T? FirstDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            if (FirstDescendant<T>(child) is { } nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private void ConfigureBackdrop()

@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Foundation;
 
@@ -384,4 +385,78 @@ public sealed partial class PageContainer : ContentControl
         get => (double)GetValue(ContentMaxWidthProperty);
         set => SetValue(ContentMaxWidthProperty, value);
     }
+}
+
+/// <summary>
+/// One of several layers stacked in the same cell (the items of an <c>ItemsControl</c> whose panel is a plain
+/// <c>Grid</c>), of which only the <see cref="IsActive"/> one is shown. Every layer stays in the tree and is measured,
+/// so the stack is always as tall as its tallest layer and switching layers changes no size and moves nothing:
+/// the Widgets inspector uses it to stay still while widgets with different numbers of settings are selected.
+/// An inactive layer is invisible and unreachable: not drawn, not hit-testable, disabled (so nothing inside takes
+/// keyboard focus) and without children for assistive technology.
+/// </summary>
+public sealed partial class SwitchLayer : ContentControl
+{
+    public static readonly DependencyProperty IsActiveProperty = DependencyProperty.Register(
+        nameof(IsActive), typeof(bool), typeof(SwitchLayer), new PropertyMetadata(false, OnIsActiveChanged));
+
+    public SwitchLayer()
+    {
+        IsTabStop = false;
+
+        // Stretch: a layer fills the stack, so a footer in its last row sits at the same place in every layer.
+        HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        VerticalContentAlignment = VerticalAlignment.Stretch;
+        Apply();
+    }
+
+    /// <summary>True for the one layer that is shown. Default false.</summary>
+    public bool IsActive
+    {
+        get => (bool)GetValue(IsActiveProperty);
+        set => SetValue(IsActiveProperty, value);
+    }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new SwitchLayerAutomationPeer(this);
+
+    // Opacity, not Visibility: a collapsed layer would not be measured and the stack would change height.
+    private void Apply()
+    {
+        var active = IsActive;
+        Opacity = active ? 1 : 0;
+        IsHitTestVisible = active;
+        IsEnabled = active;
+    }
+
+    private static void OnIsActiveChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var layer = (SwitchLayer)d;
+        layer.Apply();
+        try
+        {
+            // Only when a screen reader has asked for this layer before; tells it the children changed.
+            FrameworkElementAutomationPeer.FromElement(layer)?.RaiseAutomationEvent(AutomationEvents.StructureChanged);
+        }
+        catch (Exception)
+        {
+            // A notification that cannot be delivered must not break the switch.
+        }
+    }
+}
+
+/// <summary>Hides an inactive <see cref="SwitchLayer"/>'s content from assistive technology; the layer itself is never a control.</summary>
+internal sealed partial class SwitchLayerAutomationPeer : FrameworkElementAutomationPeer
+{
+    private readonly SwitchLayer _owner;
+
+    public SwitchLayerAutomationPeer(SwitchLayer owner)
+        : base(owner) =>
+        _owner = owner;
+
+    protected override IList<AutomationPeer> GetChildrenCore() =>
+        _owner.IsActive ? base.GetChildrenCore() : new List<AutomationPeer>();
+
+    protected override bool IsControlElementCore() => false;
+
+    protected override bool IsContentElementCore() => false;
 }

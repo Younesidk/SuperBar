@@ -32,6 +32,14 @@
   <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
   <CornerRadius x:Key="InsetCornerRadius">6</CornerRadius>
 
+  <!--
+    Sizes that are not spacing: the side of an IconTile, the least width of a setting's combo box or number box (so a
+    column of them lines up and does not resize with its selection), and the content width of a flyout panel.
+  -->
+  <x:Double x:Key="IconTileSize">36</x:Double>
+  <x:Double x:Key="SettingControlMinWidth">160</x:Double>
+  <x:Double x:Key="FlyoutContentWidth">340</x:Double>
+
   <!-- ===== Typography ===== -->
 
   <Style x:Key="PageTitle" TargetType="TextBlock">
@@ -142,6 +150,31 @@
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
+  <!-- The square behind an item's icon (a widget tile, the inspector header). Put one FontIcon inside (FontSize 16). -->
+  <Style x:Key="IconTile" TargetType="Border">
+    <Setter Property="Width" Value="{StaticResource IconTileSize}" />
+    <Setter Property="Height" Value="{StaticResource IconTileSize}" />
+    <Setter Property="CornerRadius" Value="{StaticResource InsetCornerRadius}" />
+    <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- A hairline between the groups inside one card. -->
+  <Style x:Key="Divider" TargetType="Border">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
+  </Style>
+  <!--
+    The accent outline of a selected tile, laid over a TileButton in the same Grid cell. Show and hide it with
+    Opacity, not Visibility: selecting must not cause a layout pass.
+  -->
+  <Style x:Key="SelectionRing" TargetType="Border">
+    <Setter Property="BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
+    <Setter Property="IsHitTestVisible" Value="False" />
+  </Style>
+
   <!-- ===== Pills (badges) ===== -->
   <!-- A Border with one TextBlock: Pill + PillText (neutral), PillCaution + PillCautionText ("Coming soon"). -->
 
@@ -247,6 +280,26 @@
     <Setter Property="HorizontalContentAlignment" Value="Center" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="UseSystemFocusVisuals" Value="True" />
+    <Setter Property="FocusVisualMargin" Value="-3" />
+    <Setter Property="Template" Value="{StaticResource OverlayButtonTemplate}" />
+  </Style>
+
+  <!--
+    A card that is one button: a selectable tile. It looks like a CompactCard and fills its cell; the caller lays out
+    the content. Other controls of the tile (a switch) are siblings laid over it, never children of the button.
+  -->
+  <Style x:Key="TileButton" TargetType="Button">
+    <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+    <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
+    <Setter Property="Padding" Value="{StaticResource CardPaddingCompact}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Top" />
     <Setter Property="UseSystemFocusVisuals" Value="True" />
     <Setter Property="FocusVisualMargin" Value="-3" />
     <Setter Property="Template" Value="{StaticResource OverlayButtonTemplate}" />

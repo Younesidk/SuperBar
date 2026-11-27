@@ -48,7 +48,7 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
             new GeneralPageViewModel(settings, runtime, ui),
             new AppearancePageViewModel(settings, dispatcher),
             new LayoutPageViewModel(settings, widgets, dispatcher),
-            new WidgetsPageViewModel(settings, widgets, settingsEditors, store, dispatcher),
+            new WidgetsPageViewModel(settings, widgets, settingsEditors, store, ui, dispatcher),
             new ApplicationsPageViewModel(settings, icons, tracker, ui, dispatcher),
             new AboutPageViewModel(paths, launcher, settings, nativeTaskbar, ui, dispatcher),
         ];
@@ -658,37 +658,12 @@ public sealed class LayoutZoneViewModel(TaskbarZone zone, string title, string d
     }
 
     /// <summary>
-    /// Brings <see cref="Items"/> to <paramref name="target"/> with the fewest collection edits: removes what left,
-    /// then moves or inserts each entry into its slot. Items that stay put keep their containers (and focus).
+    /// Brings <see cref="Items"/> to <paramref name="target"/> in place (see <see cref="ObservableCollectionSync.SyncTo"/>),
+    /// so items that stay put keep their containers (and focus).
     /// </summary>
     internal void SyncItems(IReadOnlyList<LayoutItemViewModel> target)
     {
-        for (var i = Items.Count - 1; i >= 0; i--)
-        {
-            if (!target.Contains(Items[i]))
-            {
-                Items.RemoveAt(i);
-            }
-        }
-
-        for (var i = 0; i < target.Count; i++)
-        {
-            var current = Items.IndexOf(target[i]);
-            if (current == i)
-            {
-                continue;
-            }
-
-            if (current < 0)
-            {
-                Items.Insert(i, target[i]);
-            }
-            else
-            {
-                Items.Move(current, i);
-            }
-        }
-
+        Items.SyncTo(target);
         IsEmpty = Items.Count == 0;
         CountLabel = Items.Count switch
         {
