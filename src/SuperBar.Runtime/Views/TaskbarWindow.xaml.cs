@@ -204,6 +204,23 @@ public sealed partial class TaskbarWindow : Window
         }
     }
 
+    private void OnTrayLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SystemTraySectionViewModel tray })
+        {
+            tray.SetViewLoaded(true);
+        }
+    }
+
+    private void OnTrayUnloaded(object sender, RoutedEventArgs e)
+    {
+        // WinUI can deliver a stale Unloaded after the Loaded of a re-parented element: only a real removal counts.
+        if (sender is FrameworkElement { DataContext: SystemTraySectionViewModel tray, IsLoaded: false })
+        {
+            tray.SetViewLoaded(false);
+        }
+    }
+
     private void OnWidgetItemLoaded(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement item)

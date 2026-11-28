@@ -17,6 +17,7 @@ internal sealed class WindowTracker : IWindowTracker, IDisposable
     private readonly List<TrackedWindow> _windows = new();
     private readonly HashSet<nint> _ignored = new();
     private readonly Dictionary<int, string?> _processPaths = new();
+    private readonly WindowAppIds _appIds = new();
     private readonly IBadgeStore _badgeStore;
 
     // Badges by window, shown or not: an app may badge a window hidden in the tray, and the badge must be there
@@ -236,6 +237,7 @@ internal sealed class WindowTracker : IWindowTracker, IDisposable
             case HSHELL_RUDEAPPACTIVATED:
                 // Activation is also where previously cloaked windows (UWP) first become eligible.
                 TryAdd(hwnd, raise: false);
+                FillMissingAppId(hwnd, hostedAppsOnly: true);
                 StopFlashing(hwnd);
                 ActiveWindow = ResolveActiveWindow(ActiveWindow, hwnd, IndexOf(hwnd) >= 0, GetForegroundWindow(), IsOwnWindow, IsIconic);
 
@@ -308,12 +310,46 @@ internal sealed class WindowTracker : IWindowTracker, IDisposable
             return;
         }
 
+        var changed = FillMissingAppId(hwnd, hostedAppsOnly: false);
         var title = GetTitle(hwnd);
         if (title != _windows[index].Title)
         {
             _windows[index] = _windows[index] with { Title = title };
+            changed = true;
+        }
+
+        if (changed)
+        {
             WindowsChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>
+    /// Looks the window's app id up again when it had none: a UWP app's frame only hosts the app's CoreWindow once it
+    /// has been shown, and some apps set their window's id after creating it.
+    /// </summary>
+    private bool FillMissingAppId(nint hwnd, bool hostedAppsOnly)
+    {
+        var index = IndexOf(hwnd);
+        if (index < 0 || _windows[index].AppUserModelId is not null)
+        {
+            return false;
+        }
+
+        var window = _windows[index];
+        if (hostedAppsOnly && window.ProcessPath?.EndsWith("ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase) != true)
+        {
+            return false;
+        }
+
+        var (appId, packaged) = _appIds.Get(hwnd, window.ProcessId, window.ProcessPath);
+        if (appId is null)
+        {
+            return false;
+        }
+
+        _windows[index] = window with { AppUserModelId = appId, IsPackagedApp = packaged };
+        return true;
     }
 
     private void TryAdd(nint hwnd, bool raise)
@@ -325,7 +361,9 @@ internal sealed class WindowTracker : IWindowTracker, IDisposable
 
         GetWindowThreadProcessId(hwnd, out var pid);
         _badges.TryGetValue(hwnd, out var badge);
-        _windows.Add(new TrackedWindow(hwnd, GetTitle(hwnd), (int)pid, GetProcessPath((int)pid), OverlayIcon: badge?.Icon));
+        var path = GetProcessPath((int)pid);
+        var (appId, packaged) = _appIds.Get(hwnd, (int)pid, path);
+        _windows.Add(new TrackedWindow(hwnd, GetTitle(hwnd), (int)pid, path, OverlayIcon: badge?.Icon, AppUserModelId: appId, IsPackagedApp: packaged));
         if (raise)
         {
             WindowsChanged?.Invoke(this, EventArgs.Empty);

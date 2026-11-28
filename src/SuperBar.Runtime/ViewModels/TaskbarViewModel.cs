@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SuperBar.Core.Layout;
 using SuperBar.Core.Mvvm;
@@ -52,7 +53,12 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         _logger = loggerFactory.CreateLogger<TaskbarViewModel>();
         _start = new StartSectionViewModel(SectionOrdering.StartKey, shell);
         Apps = new AppsSectionViewModel(SectionOrdering.AppsKey, tracker, switcher, launcher, icons, loggerFactory.CreateLogger<AppsSectionViewModel>());
-        _tray = new SystemTraySectionViewModel(SectionOrdering.TrayKey, shell);
+        _tray = new SystemTraySectionViewModel(
+            SectionOrdering.TrayKey,
+            shell,
+            services.GetRequiredService<INetworkStateService>(),
+            services.GetRequiredService<IBatteryStateService>(),
+            theme);
 
         OpenControlCenterCommand = new RelayCommand(openControlCenter);
         OpenTaskManagerCommand = new RelayCommand(shell.OpenTaskManager);
@@ -110,7 +116,7 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
 
     public void Apply(SuperBarSettings settings)
     {
-        Apps.SetPins(settings.PinnedApps);
+        Apps.SetPins(AppOrdering.ShownPins(settings));
         SyncWidgets(settings);
         SyncZone(LeftSections, settings, TaskbarZone.Left);
         SyncZone(CenterSections, settings, TaskbarZone.Center);

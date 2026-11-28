@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using SuperBar.Core.Geometry;
 using SuperBar.Core.Layout;
 using SuperBar.Core.Runtime;
 using SuperBar.Core.Settings;
@@ -36,6 +37,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
     private TaskbarWindow? _window;
     private WindowPreviewPopup? _preview;
     private IAppBarRegistration? _appBar;
+    private WindowsPinSync? _pinSync;
     private bool _disposed;
 
     public TaskbarRuntime(
@@ -92,9 +94,16 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
             _viewModel = CreateViewModel();
             _viewModel.Apps.PinOrderChanged += keys =>
                 _settings.Update(s => s.PinnedApps = AppOrdering.ReorderPins(s.PinnedApps, keys));
-            _viewModel.Apps.PinRequested += (pin, index) => _settings.Update(s => AppOrdering.AddPin(s.PinnedApps, pin, index));
+            _viewModel.Apps.PinRequested += (pin, index) => _settings.Update(s => AppOrdering.AddPin(s.PinnedApps, pin, index, s.Behavior.SyncWindowsPins));
             _viewModel.Apps.UnpinRequested += key => _settings.Update(s => AppOrdering.RemovePin(s.PinnedApps, key));
             _viewModel.SectionOrderChanged += (zone, keys) => _settings.Update(s => SectionOrdering.ReorderZone(s.Layout, zone, keys));
+
+            // The pins saved by the last sync are already on the bar (with their cached icons); this catches up with
+            // Windows and then follows it live.
+            var apps = _viewModel.Apps;
+            _pinSync = _services.GetRequiredService<WindowsPinSync>();
+            _pinSync.IconsChanged += (_, _) => apps.RefreshIcons();
+            _pinSync.Start();
         }
 
         _viewModel.Apply(settings);
@@ -117,8 +126,9 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         _window.ApplyAppearance(settings.Appearance);
         _window.WidgetDragStarted += (_, _) => _services.GetRequiredService<WidgetFlyoutCoordinator>().CloseAll();
 
-        // Pre-place at the bottom edge (physical pixels) so there is no flash elsewhere; the AppBar takes over immediately.
-        var height = (int)Math.Round(settings.Appearance.Height * monitor.Scale);
+        // Pre-place at the bottom edge (physical pixels, rounded exactly like the AppBar) so there is no flash
+        // elsewhere; the AppBar takes over immediately.
+        var height = DpiScale.ToPhysical(settings.Appearance.Height, monitor.Scale);
         _window.AppWindow.MoveAndResize(new RectInt32(monitor.Bounds.Left, monitor.Bounds.Bottom - height, monitor.Bounds.Width, height));
 
         // Like ShowActivated="False": appear without stealing focus from the user's current window.
@@ -133,6 +143,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         }
 
         _appBar = _appBars.Register(hwnd, CreateOptions(settings, monitor));
+        _logger.LogInformation("Monitor {Monitor}: bounds {Bounds}, work area {WorkArea}, scale {Scale:0.##}", monitor.DeviceName, monitor.Bounds, monitor.WorkArea, monitor.Scale);
         _appBar.FullscreenAppChanged += OnFullscreenAppChanged;
 
         var viewModel = _viewModel;
@@ -203,8 +214,12 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         openControlCenter: () => _services.GetRequiredService<IControlCenterLauncher>().Show(),
         exit: Exit);
 
-    private static AppBarOptions CreateOptions(SuperBarSettings settings, MonitorInfo monitor) =>
-        new(ScreenEdge.Bottom, settings.Appearance.Height, monitor.Handle);
+    /// <summary>
+    /// The bar owns the monitor edge whenever it has replaced the native taskbar: it then sits flush on rcMonitor's
+    /// bottom no matter what the shell reports. With the native taskbar visible it stacks above it as an AppBar.
+    /// </summary>
+    private AppBarOptions CreateOptions(SuperBarSettings settings, MonitorInfo monitor) =>
+        new(ScreenEdge.Bottom, settings.Appearance.Height, monitor.Handle, OwnsEdge: _nativeTaskbar.State == NativeTaskbarState.Hidden);
 
     private void OnSettingsChanged(SettingsChangedEventArgs e)
     {
@@ -233,12 +248,13 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
                 _nativeTaskbar.Restore();
             }
 
-            _appBar?.Reposition();
+            _appBar?.Update(CreateOptions(current, _monitors.GetPrimaryMonitor()));
         }
     }
 
     private void OnExplorerRestarted()
     {
+        _pinSync?.OnExplorerRestarted();
         if (!IsEnabled)
         {
             return;

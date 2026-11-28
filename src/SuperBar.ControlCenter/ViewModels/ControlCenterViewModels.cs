@@ -26,6 +26,7 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
         IAppPaths paths,
         IAppLauncher launcher,
         IIconProvider icons,
+        IPinIconStore pinIcons,
         IWindowTracker tracker,
         INativeTaskbarController nativeTaskbar,
         IUpdateService updates,
@@ -44,7 +45,7 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
             new AppearancePageViewModel(settings, dispatcher),
             new LayoutPageViewModel(settings, widgets, dispatcher),
             new WidgetsPageViewModel(settings, widgets, settingsEditors, store, ui, dispatcher),
-            new ApplicationsPageViewModel(settings, icons, tracker, ui, dispatcher),
+            new ApplicationsPageViewModel(settings, icons, pinIcons, tracker, ui, dispatcher),
             new AboutPageViewModel(paths, launcher, settings, nativeTaskbar, updates, ui, dispatcher),
         ];
         _selectedPage = Pages[0];
@@ -151,6 +152,7 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
     private readonly IControlCenterUi _ui;
     private bool _hideNativeTaskbar;
     private bool _startWithWindows;
+    private bool _syncWindowsPins;
 
     public GeneralPageViewModel(ISettingsService settings, ITaskbarRuntimeController runtime, IStartupRegistration startup, IControlCenterUi ui)
         : base("General", "\uE713", "Turn SuperBar on or off and control how it replaces the Windows taskbar.")
@@ -160,6 +162,7 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
         _ui = ui;
         _hideNativeTaskbar = settings.Current.Behavior.HideNativeTaskbar;
         _startWithWindows = settings.Current.Behavior.StartWithWindows;
+        _syncWindowsPins = settings.Current.Behavior.SyncWindowsPins;
         CanStartWithWindows = startup.IsAvailable;
         runtime.StateChanged += OnRuntimeStateChanged;
         ResetCommand = new RelayCommand(ConfirmAndReset);
@@ -216,6 +219,19 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
         }
     }
 
+    /// <summary>Show the apps pinned to the Windows taskbar and follow them live.</summary>
+    public bool SyncWindowsPins
+    {
+        get => _syncWindowsPins;
+        set
+        {
+            if (SetProperty(ref _syncWindowsPins, value))
+            {
+                _settings.Update(s => s.Behavior.SyncWindowsPins = value);
+            }
+        }
+    }
+
     /// <summary>False in a development build, which never registers itself with Windows.</summary>
     public bool CanStartWithWindows { get; }
 
@@ -266,6 +282,12 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
         {
             _startWithWindows = behavior.StartWithWindows;
             OnPropertyChanged(nameof(StartWithWindows));
+        }
+
+        if (behavior.SyncWindowsPins != _syncWindowsPins)
+        {
+            _syncWindowsPins = behavior.SyncWindowsPins;
+            OnPropertyChanged(nameof(SyncWindowsPins));
         }
     }
 
@@ -836,6 +858,7 @@ public sealed class ApplicationsPageViewModel : PageViewModel, IDisposable
 
     private readonly ISettingsService _settings;
     private readonly IIconProvider _icons;
+    private readonly IPinIconStore _pinIcons;
     private readonly IWindowTracker _tracker;
     private readonly IControlCenterUi _ui;
     private readonly IUiDispatcher _dispatcher;
@@ -845,13 +868,15 @@ public sealed class ApplicationsPageViewModel : PageViewModel, IDisposable
     public ApplicationsPageViewModel(
         ISettingsService settings,
         IIconProvider icons,
+        IPinIconStore pinIcons,
         IWindowTracker tracker,
         IControlCenterUi ui,
         IUiDispatcher dispatcher)
-        : base("Applications", "\uECAA", "Applications pinned to the bar. Drag them on the bar to reorder.")
+        : base("Applications", "\uECAA", "Applications pinned to the bar, including the ones pinned to the Windows taskbar (see General). Drag them on the bar to reorder.")
     {
         _settings = settings;
         _icons = icons;
+        _pinIcons = pinIcons;
         _tracker = tracker;
         _ui = ui;
         _dispatcher = dispatcher;
@@ -871,7 +896,8 @@ public sealed class ApplicationsPageViewModel : PageViewModel, IDisposable
     /// </summary>
     public IReadOnlyList<RunningAppViewModel> GetRunningApps()
     {
-        var pinned = _settings.Current.PinnedApps.Select(p => AppOrdering.PinKey(p.Path)).ToHashSet(StringComparer.Ordinal);
+        var shown = AppOrdering.ShownPins(_settings.Current);
+        var pinned = shown.Select(p => AppOrdering.PinKey(p.Path)).ToHashSet(StringComparer.Ordinal);
         if (Environment.ProcessPath is { } self)
         {
             pinned.Add(AppOrdering.PinKey(self));
@@ -886,8 +912,9 @@ public sealed class ApplicationsPageViewModel : PageViewModel, IDisposable
                 continue;
             }
 
+            // Already on the bar, possibly under another path (a launcher stub) or by its app id.
             var key = AppOrdering.PinKey(path);
-            if (pinned.Contains(key) || !seen.Add(key))
+            if (pinned.Contains(key) || PinMatching.FindPin(shown, window.AppUserModelId, path) >= 0 || !seen.Add(key))
             {
                 continue;
             }
@@ -903,7 +930,8 @@ public sealed class ApplicationsPageViewModel : PageViewModel, IDisposable
         _settings.Update(s => AppOrdering.AddPin(
             s.PinnedApps,
             new PinnedApp { DisplayName = AppIdentity.FriendlyName(path, Path.GetFileNameWithoutExtension(path)), Path = path },
-            int.MaxValue));
+            int.MaxValue,
+            s.Behavior.SyncWindowsPins));
 
     /// <summary>Lets the user choose an .exe and pins it.</summary>
     public async void BrowseAndPin()
@@ -927,8 +955,8 @@ public sealed class ApplicationsPageViewModel : PageViewModel, IDisposable
 
     private void Reload()
     {
-        var pins = _settings.Current.PinnedApps;
-        var signature = string.Join("|", pins.Select(p => p.Id + "=" + p.Path + "=" + p.DisplayName));
+        var pins = AppOrdering.ShownPins(_settings.Current);
+        var signature = string.Join("|", pins.Select(p => p.Id + "=" + p.Path + "=" + p.DisplayName + "=" + p.PinnedInWindows));
         if (signature == _signature)
         {
             return;
@@ -938,10 +966,23 @@ public sealed class ApplicationsPageViewModel : PageViewModel, IDisposable
         Pinned.Clear();
         foreach (var p in pins)
         {
-            Pinned.Add(new PinnedAppItemViewModel(p, IconFor(p.Path), Unpin));
+            Pinned.Add(new PinnedAppItemViewModel(p, IconFor(p), Unpin));
         }
 
         OnPropertyChanged(nameof(IsEmpty));
+    }
+
+    /// <summary>A pin synced from Windows uses the icon its last sync cached; others their executable's (or package's).</summary>
+    private ImageSource? IconFor(PinnedApp pin)
+    {
+        if (pin.PinnedInWindows && _pinIcons.Load(AppOrdering.PinKey(pin)) is { } cached)
+        {
+            return IconImages.ToBitmap(cached);
+        }
+
+        return PinMatching.AppsFolderId(pin.Path) is not null
+            ? IconImages.ToBitmap(_icons.GetShellItemIcon(pin.Path, IconPixelSize))
+            : IconFor(pin.Path);
     }
 
     private ImageSource? IconFor(string path)
@@ -955,8 +996,15 @@ public sealed class ApplicationsPageViewModel : PageViewModel, IDisposable
         return icon;
     }
 
+    // Same rule as the bar's "Unpin": a pin Windows also has is hidden, so the next sync does not bring it back.
     private void Unpin(PinnedAppItemViewModel item) =>
-        _settings.Update(s => s.PinnedApps.RemoveAll(p => p.Id == item.Id));
+        _settings.Update(s =>
+        {
+            if (s.PinnedApps.FirstOrDefault(p => p.Id == item.Id) is { } pin)
+            {
+                AppOrdering.RemovePin(s.PinnedApps, AppOrdering.PinKey(pin));
+            }
+        });
 
     public void Dispose() => _settings.Changed -= OnSettingsChanged;
 }
@@ -978,9 +1026,10 @@ public sealed class PinnedAppItemViewModel
     {
         Id = pin.Id;
         DisplayName = string.IsNullOrWhiteSpace(pin.DisplayName) ? Path.GetFileNameWithoutExtension(pin.Path) : pin.DisplayName;
-        AppPath = pin.Path;
+        AppPath = pin.PinnedInWindows ? pin.Path + "\nPinned to the Windows taskbar" : pin.Path;
         Icon = icon;
-        IsMissing = !File.Exists(pin.Path);
+        IsMissing = PinMatching.AppsFolderId(pin.Path) is null && Path.IsPathFullyQualified(pin.Path)
+                    && !File.Exists(pin.Path) && !Directory.Exists(pin.Path);
         UnpinCommand = new RelayCommand(() => unpin(this));
         UnpinName = $"Unpin {DisplayName}";
     }

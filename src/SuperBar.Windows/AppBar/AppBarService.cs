@@ -22,6 +22,7 @@ internal sealed class AppBarRegistration : IAppBarRegistration
 {
     private const nuint SubclassId = 0x5B5B;
     private const nint RepositionRequest = 0x5B01;
+    private const nint VerifyRequest = 0x5B02;
 
     private readonly nint _hwnd;
     private readonly IMonitorService _monitors;
@@ -34,6 +35,7 @@ internal sealed class AppBarRegistration : IAppBarRegistration
     private AppBarOptions _options;
     private bool _registered;
     private bool _repositioning;
+    private ScreenRect _lastQueried;
     private bool _disposed;
 
     public AppBarRegistration(nint hwnd, AppBarOptions options, IMonitorService monitors, ILogger logger)
@@ -98,7 +100,16 @@ internal sealed class AppBarRegistration : IAppBarRegistration
         Reposition();
     }
 
-    public void Reposition()
+    public void Reposition() => Reposition(onlyIfChanged: false);
+
+    /// <summary>
+    /// Places the bar on its monitor edge and reserves that strip with the shell. Every rectangle is computed from
+    /// the monitor's full bounds (rcMonitor, never rcWork, which already excludes the bar and any taskbar) and the
+    /// monitor's own DPI, in physical pixels. With <paramref name="onlyIfChanged"/> nothing is sent to the shell or
+    /// moved while the shell's answer and the window's real rectangle still match the last placement; that path
+    /// answers work-area broadcasts, which our own ABM_SETPOS also causes, so it must never loop.
+    /// </summary>
+    private void Reposition(bool onlyIfChanged)
     {
         if (_disposed || _repositioning)
         {
@@ -116,15 +127,40 @@ internal sealed class AppBarRegistration : IAppBarRegistration
             var final = proposed;
             if (_registered)
             {
+                // ABM_QUERYPOS has no side effects: it only reports where the shell would put us.
                 var data = NewData();
                 data.uEdge = edge;
                 data.rc = ToRECT(proposed);
                 SHAppBarMessage(ABM_QUERYPOS, ref data);
+                var queried = AppBarGeometry.EnforceThickness(MonitorService.ToRect(data.rc), _options.Edge, thickness);
+                var negotiated = AppBarGeometry.Resolve(proposed, queried, _options.Edge, thickness, _options.OwnsEdge);
 
-                var adjusted = AppBarGeometry.EnforceThickness(MonitorService.ToRect(data.rc), _options.Edge, thickness);
-                data.rc = ToRECT(adjusted);
+                if (onlyIfChanged && queried == _lastQueried && negotiated == Bounds && IsWindowAt(negotiated))
+                {
+                    return;
+                }
+
+                if (_options.OwnsEdge && queried != proposed && queried != _lastQueried)
+                {
+                    _logger.LogInformation(
+                        "Shell reports part of the edge as taken (it would place the bar at {Queried}, e.g. a native taskbar that is still releasing its space); keeping the bar on the monitor edge at {Proposed}",
+                        queried,
+                        proposed);
+                }
+
+                _lastQueried = queried;
+                data.rc = ToRECT(negotiated);
                 SHAppBarMessage(ABM_SETPOS, ref data);
-                final = AppBarGeometry.EnforceThickness(MonitorService.ToRect(data.rc), _options.Edge, thickness);
+                final = AppBarGeometry.Resolve(
+                    proposed,
+                    AppBarGeometry.EnforceThickness(MonitorService.ToRect(data.rc), _options.Edge, thickness),
+                    _options.Edge,
+                    thickness,
+                    _options.OwnsEdge);
+            }
+            else if (onlyIfChanged && final == Bounds && IsWindowAt(final))
+            {
+                return;
             }
 
             var insertAfter = IsFullscreenAppActive ? HWND_NOTOPMOST : HWND_TOPMOST;
@@ -133,7 +169,13 @@ internal sealed class AppBarRegistration : IAppBarRegistration
             if (final != Bounds)
             {
                 Bounds = final;
-                _logger.LogInformation("AppBar positioned at {Bounds} on {Monitor} (scale {Scale:0.##})", final, monitor.DeviceName, monitor.Scale);
+                _logger.LogInformation(
+                    "AppBar positioned at {Bounds} on {Monitor} {MonitorBounds} (scale {Scale:0.##}, owns edge: {OwnsEdge})",
+                    final,
+                    monitor.DeviceName,
+                    monitor.Bounds,
+                    monitor.Scale,
+                    _options.OwnsEdge);
                 BoundsChanged?.Invoke(this, final);
             }
         }
@@ -146,6 +188,9 @@ internal sealed class AppBarRegistration : IAppBarRegistration
             _repositioning = false;
         }
     }
+
+    private bool IsWindowAt(ScreenRect rect) =>
+        GetWindowRect(_hwnd, out var actual) && MonitorService.ToRect(actual) == rect;
 
     private MonitorInfo ResolveMonitor()
     {
@@ -192,6 +237,18 @@ internal sealed class AppBarRegistration : IAppBarRegistration
                     return result;
                 }
 
+                case WM_SETTINGCHANGE when (int)wParam == SPI_SETWORKAREA:
+                case WM_DISPLAYCHANGE:
+                    // The work area or the monitor's resolution changed (a native taskbar finishing its switch to
+                    // auto-hide, another AppBar, a mode change): check the placement once the broadcast is over.
+                    PostMessage(_hwnd, _callbackMessage, VerifyRequest, 0);
+                    break;
+
+                case WM_POWERBROADCAST when (int)wParam is PBT_APMRESUMEAUTOMATIC or PBT_APMRESUMESUSPEND:
+                    // Displays can come back from sleep in a different mode; re-anchor unconditionally.
+                    PostMessage(_hwnd, _callbackMessage, RepositionRequest, 0);
+                    break;
+
                 case WM_NCDESTROY:
                     Unregister();
                     RemoveWindowSubclass(hWnd, _subclassProc, SubclassId);
@@ -222,6 +279,10 @@ internal sealed class AppBarRegistration : IAppBarRegistration
                     Reposition();
                 }
 
+                break;
+
+            case (int)VerifyRequest:
+                Reposition(onlyIfChanged: true);
                 break;
 
             case ABN_FULLSCREENAPP:

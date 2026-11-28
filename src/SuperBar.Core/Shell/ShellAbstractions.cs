@@ -30,7 +30,11 @@ public interface IMonitorService
 }
 
 /// <summary>Options used to reserve a strip of a monitor for the SuperBar window.</summary>
-public sealed record AppBarOptions(ScreenEdge Edge, double ThicknessDip, nint MonitorHandle);
+/// <param name="OwnsEdge">
+/// The bar replaces the (hidden) native taskbar, so it always sits flush on the monitor edge instead of wherever
+/// the shell's ABM_QUERYPOS answer would put it.
+/// </param>
+public sealed record AppBarOptions(ScreenEdge Edge, double ThicknessDip, nint MonitorHandle, bool OwnsEdge = false);
 
 /// <summary>
 /// Registers windows as shell AppBars (SHAppBarMessage ABM_NEW / ABM_QUERYPOS / ABM_SETPOS / ABM_REMOVE),
@@ -112,13 +116,20 @@ public interface IShellEvents
 /// <summary>A top-level window that would appear on a taskbar.</summary>
 /// <param name="IsFlashing">The window asked for attention (FlashWindowEx) and has not been activated since.</param>
 /// <param name="OverlayIcon">The badge the app put on its taskbar button (ITaskbarList3::SetOverlayIcon), if any.</param>
+/// <param name="AppUserModelId">
+/// The window's explicit AppUserModelID: the one the window sets (browser profiles, web apps) or its package's
+/// (Store / MSIX apps, including UWP apps hosted by ApplicationFrameHost.exe). Null for most desktop apps.
+/// </param>
+/// <param name="IsPackagedApp">The id belongs to a packaged app, which is started through its id, not its executable.</param>
 public sealed record TrackedWindow(
     nint Handle,
     string Title,
     int ProcessId,
     string? ProcessPath,
     bool IsFlashing = false,
-    IconPixels? OverlayIcon = null);
+    IconPixels? OverlayIcon = null,
+    string? AppUserModelId = null,
+    bool IsPackagedApp = false);
 
 public interface IWindowTracker
 {
@@ -170,9 +181,23 @@ public interface IWindowThumbnail : IDisposable
     void Show(ScreenRect destination);
 }
 
+/// <summary>What to start for an app button.</summary>
+/// <param name="Path">Executable, document, <c>shell:</c> URI or <c>shell:AppsFolder\&lt;AppUserModelID&gt;</c>.</param>
+/// <param name="ShortcutPath">A shortcut to start instead of <paramref name="Path"/> while it exists (Windows taskbar pins).</param>
+/// <param name="PackagedAppId">Set for packaged (Store / MSIX) apps, which are activated by id.</param>
+public sealed record AppLaunchTarget(
+    string Path,
+    string? Arguments = null,
+    string? WorkingDirectory = null,
+    string? ShortcutPath = null,
+    string? PackagedAppId = null);
+
 public interface IAppLauncher
 {
     bool Launch(string path, string? arguments = null);
+
+    /// <summary>Starts an app the way the Windows taskbar would: its shortcut, its package, or its executable.</summary>
+    bool Launch(AppLaunchTarget target);
 }
 
 /// <summary>Straight (non-premultiplied) BGRA32 pixels, top-down.</summary>
@@ -182,6 +207,76 @@ public interface IIconProvider
 {
     IconPixels? GetWindowIcon(nint windowHandle);
     IconPixels? GetFileIcon(string path, int sizePx);
+
+    /// <summary>
+    /// The shell's own image of an item (IShellItemImageFactory): a shortcut's custom icon, a packaged app's tile logo,
+    /// an executable's icon, at <paramref name="sizePx"/> pixels. <paramref name="parsingName"/> is a file path or a
+    /// shell parsing name such as <c>shell:AppsFolder\&lt;AppUserModelID&gt;</c>. Call on an STA thread.
+    /// </summary>
+    IconPixels? GetShellItemIcon(string parsingName, int sizePx);
+}
+
+/// <summary>Icons rendered for pins, kept on disk so the bar shows them at once on the next start.</summary>
+public interface IPinIconStore
+{
+    IconPixels? Load(string pinKey);
+
+    /// <summary>Saves the icon; returns false when it is already stored with the same pixels.</summary>
+    bool Save(string pinKey, IconPixels icon);
+}
+
+/// <summary>One app pinned to the Windows taskbar, in the form SuperBar pins it.</summary>
+/// <param name="DisplayName">The name the Windows taskbar shows.</param>
+/// <param name="Path">The shortcut's target executable, or <c>shell:AppsFolder\&lt;AppUserModelID&gt;</c> for an app without one.</param>
+/// <param name="ShortcutPath">The pin's .lnk file in <c>User Pinned\TaskBar</c>, when it has one.</param>
+/// <param name="IconSource">What the icon is rendered from: the .lnk, the AppsFolder item or the executable.</param>
+/// <param name="Icon">The icon, rendered by the shell, or null when it could not be.</param>
+public sealed record WindowsTaskbarPin(
+    string DisplayName,
+    string Path,
+    string? Arguments,
+    string? WorkingDirectory,
+    string? ShortcutPath,
+    string? AppUserModelId,
+    string IconSource,
+    IconPixels? Icon);
+
+/// <summary>The Windows taskbar's pins, in order, and how they were found.</summary>
+/// <param name="IsComplete">
+/// False when some pins could not be read (typically while Windows is still starting): the result is then partial, and
+/// a pin missing from it may still be pinned. Shortcuts whose app is gone are skipped deliberately and do not count.
+/// </param>
+/// <param name="TaskbandEntries">Entries in the Taskband registry value, the authoritative list and order.</param>
+/// <param name="FolderShortcuts">Shortcuts in the <c>User Pinned\TaskBar</c> folder.</param>
+/// <param name="Skipped">One line per entry left out, and why.</param>
+public sealed record WindowsPinReadResult(
+    IReadOnlyList<WindowsTaskbarPin> Pins,
+    bool IsComplete,
+    int TaskbandEntries,
+    int FolderShortcuts,
+    IReadOnlyList<string> Skipped);
+
+/// <summary>
+/// Reads the apps pinned to the Windows taskbar (Windows 10 and 11) and reports when the user pins, unpins or reorders
+/// them. Read-only: SuperBar never changes the Windows taskbar's pins.
+/// </summary>
+public interface IWindowsTaskbarPinService
+{
+    /// <summary>
+    /// Reads the pins and renders their icons at <paramref name="iconSizePx"/> on a background STA thread. Returns null
+    /// when the pins cannot be read at all (Explorer has not written them yet).
+    /// </summary>
+    Task<WindowsPinReadResult?> ReadAsync(int iconSizePx, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Raised (on a thread-pool thread) about 500 ms after the last change to the Taskband registry key or the pinned
+    /// shortcuts folder, once <see cref="StartWatching"/> was called.
+    /// </summary>
+    event EventHandler? PinsChanged;
+
+    void StartWatching();
+
+    void StopWatching();
 }
 
 /// <summary>Shell surfaces that SuperBar opens rather than re-implements.</summary>

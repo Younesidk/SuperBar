@@ -68,6 +68,20 @@
                               IsEnabled="{x:Bind CanStartWithWindows}" AutomationProperties.Name="Start with Windows" />
               </Grid>
             </Border>
+            <Border Style="{StaticResource Card}">
+              <Grid ColumnSpacing="{StaticResource SpacingL}">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                  <TextBlock Style="{StaticResource Label}" Text="Show apps pinned to the Windows taskbar" />
+                  <TextBlock Style="{StaticResource Hint}" Text="Your Windows taskbar pins appear on SuperBar in the same order and follow along when you pin, unpin or reorder them in Windows. Apps you pin in SuperBar stay either way." />
+                </StackPanel>
+                <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsOn="{x:Bind SyncWindowsPins, Mode=TwoWay}"
+                              AutomationProperties.Name="Show apps pinned to the Windows taskbar" />
+              </Grid>
+            </Border>
 
             <!-- Destructive actions live apart from the safe ones; Exit is in the navigation pane's footer. -->
             <TextBlock Style="{StaticResource SectionHeader}" Text="Reset" />

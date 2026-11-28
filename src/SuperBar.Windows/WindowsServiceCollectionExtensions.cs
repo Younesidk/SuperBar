@@ -6,6 +6,7 @@ using SuperBar.Windows.Media;
 using SuperBar.Windows.Apps;
 using SuperBar.Windows.Monitors;
 using SuperBar.Windows.Shell;
+using SuperBar.Windows.SystemStatus;
 using SuperBar.Windows.Taskbar;
 using SuperBar.Windows.Windows;
 
@@ -35,11 +36,18 @@ public static class WindowsServiceCollectionExtensions
         services.AddSingleton<ICursorService, CursorService>();
         services.AddSingleton<ISystemMetricsProvider, SystemMetricsProvider>();
 
+        // Thread-safe: reads on short-lived STA threads of its own, watches on background threads.
+        services.AddSingleton<IWindowsTaskbarPinService, WindowsTaskbarPinService>();
+
         // Created on first use (by the Now Playing widget), on the UI thread.
         services.AddSingleton<IMediaSessionService, GsmtcMediaSessionService>();
 
         // Stateless; queried from the thread pool by the Bluetooth Battery widget.
         services.AddSingleton<IBluetoothBatteryService, PnpBluetoothBatteryService>();
+
+        // The tray's status icons. Subscribed to on the UI thread; they follow Windows only while subscribed.
+        services.AddSingleton<INetworkStateService, WinRtNetworkStateService>();
+        services.AddSingleton<IBatteryStateService, WinRtBatteryStateService>();
         return services;
     }
 
