@@ -11,7 +11,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Company>SuperBar</Company>
     <Product>SuperBar</Product>
   </PropertyGroup>
