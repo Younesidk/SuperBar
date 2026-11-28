@@ -16,6 +16,10 @@ internal sealed class WindowChrome(ILogger<WindowChrome> logger) : IWindowChrome
     private static readonly SubclassProc s_subclassProc = SurfaceSubclassProc;
     private readonly HashSet<nint> _subclassed = new();
 
+    // Icons loaded from .ico files, by file and pixel size. A window does not own the icons it is given, and the
+    // Control Center can be opened many times, so each one is loaded once and destroyed with this service.
+    private readonly Dictionary<(string Path, int Size), nint> _icons = new();
+
     /// <summary>
     /// Raised on the UI thread when one of SuperBar's surfaces becomes the active window, which for a mouse click
     /// happens before the click reaches any button and before the shell flyout it light-dismisses (Start, tray
@@ -83,6 +87,60 @@ internal sealed class WindowChrome(ILogger<WindowChrome> logger) : IWindowChrome
         return dpi == 0 ? 1.0 : dpi / 96.0;
     }
 
+    public bool SetWindowIcon(nint windowHandle, string iconPath)
+    {
+        if (windowHandle == 0)
+        {
+            return false;
+        }
+
+        var dpi = GetDpiForWindow(windowHandle);
+        if (dpi == 0)
+        {
+            dpi = 96;
+        }
+
+        // The system's own sizes at this DPI (32 and 16 px at 100%), so LoadImage picks the matching .ico frame
+        // instead of scaling one.
+        var big = LoadIcon(iconPath, GetSystemMetricsForDpi(SM_CXICON, dpi));
+        var small = LoadIcon(iconPath, GetSystemMetricsForDpi(SM_CXSMICON, dpi));
+        if (big != 0)
+        {
+            SendMessage(windowHandle, WM_SETICON, ICON_BIG, big);
+        }
+
+        if (small != 0)
+        {
+            SendMessage(windowHandle, WM_SETICON, ICON_SMALL, small);
+        }
+
+        if (big == 0 || small == 0)
+        {
+            logger.LogWarning("Could not load the window icon {Path} (big: {Big}, small: {Small})", iconPath, big != 0, small != 0);
+        }
+
+        return big != 0 || small != 0;
+    }
+
+    private nint LoadIcon(string path, int size)
+    {
+        if (size <= 0)
+        {
+            return 0;
+        }
+
+        if (!_icons.TryGetValue((path, size), out var icon))
+        {
+            icon = LoadImage(0, path, IMAGE_ICON, size, size, LR_LOADFROMFILE);
+            if (icon != 0)
+            {
+                _icons[(path, size)] = icon;
+            }
+        }
+
+        return icon;
+    }
+
     internal static long SurfaceStyle(long style) =>
         style & ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
 
@@ -147,5 +205,12 @@ internal sealed class WindowChrome(ILogger<WindowChrome> logger) : IWindowChrome
         }
 
         _subclassed.Clear();
+
+        foreach (var icon in _icons.Values)
+        {
+            DestroyIcon(icon);
+        }
+
+        _icons.Clear();
     }
 }

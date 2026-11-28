@@ -237,6 +237,14 @@ public interface IWindowChrome
 
     /// <summary>The window's DPI scale (1.0 = 96 DPI).</summary>
     double GetScale(nint windowHandle);
+
+    /// <summary>
+    /// Gives the window its large and small icon (<c>WM_SETICON</c>, <c>ICON_BIG</c> and <c>ICON_SMALL</c>) from an
+    /// .ico file, each loaded at the exact size the window's DPI calls for. The title bar and Alt+Tab read these.
+    /// </summary>
+    /// <param name="iconPath">Absolute path of the .ico file.</param>
+    /// <returns><see langword="false"/> when the file could not be loaded at either size.</returns>
+    bool SetWindowIcon(nint windowHandle, string iconPath);
 }
 
 /// <summary>What a Bluetooth device is, as far as its icon is concerned.</summary>

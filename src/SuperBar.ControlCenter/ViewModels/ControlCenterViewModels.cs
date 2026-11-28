@@ -1012,6 +1012,9 @@ public sealed class AboutPageViewModel : PageViewModel
         RestoreTaskbarCommand = new RelayCommand(RestoreTaskbar);
     }
 
+    /// <summary>The app icon of the hero card, decoded for the 56 px <c>HeroIcon</c> style; null if the file is missing.</summary>
+    public ImageSource? AppIcon { get; } = AppAssets.LoadImage(56);
+
     public string Version { get; } = AppInfo.Version;
     public string VersionPill => "v" + Version;
     public string Tagline => "A modern replacement for the Windows taskbar. Foundation milestone.";

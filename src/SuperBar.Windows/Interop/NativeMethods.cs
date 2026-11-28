@@ -302,6 +302,11 @@ internal static class NativeMethods
     public const int ICON_SMALL = 0;
     public const int ICON_BIG = 1;
     public const int ICON_SMALL2 = 2;
+    public const uint WM_SETICON = 0x0080;
+    public const uint IMAGE_ICON = 1;
+    public const uint LR_LOADFROMFILE = 0x0010;
+    public const int SM_CXICON = 11;
+    public const int SM_CXSMICON = 49;
     public const int GCLP_HICON = -14;
     public const int GCLP_HICONSM = -34;
     public const uint SMTO_ABORTIFHUNG = 0x0002;
@@ -441,6 +446,15 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool DestroyIcon(nint hIcon);
+
+    [DllImport("user32.dll", EntryPoint = "LoadImageW", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern nint LoadImage(nint hInst, string name, uint type, int cx, int cy, uint fuLoad);
+
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetricsForDpi(int nIndex, uint dpi);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageW")]
+    public static extern nint SendMessage(nint hWnd, uint msg, nint wParam, nint lParam);
 
     [DllImport("user32.dll")]
     public static extern nint GetDC(nint hWnd);

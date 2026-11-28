@@ -719,17 +719,15 @@
       <DataTemplate x:Key="AboutPageTemplate" x:DataType="vm:AboutPageViewModel">
         <views:PageContainer Title="{x:Bind Title}" Subtitle="{x:Bind Subtitle}">
           <StackPanel>
-            <!-- Hero: app tile, name and version. -->
+            <!-- Hero: app icon, name and version. -->
             <Border Style="{StaticResource Card}">
               <Grid ColumnSpacing="{StaticResource SpacingL}">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" />
                   <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Border Style="{StaticResource HeroTile}">
-                  <FontIcon Glyph="&#xE90E;" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                </Border>
+                <Image Style="{StaticResource HeroIcon}" Source="{x:Bind AppIcon}"
+                       AutomationProperties.AccessibilityView="Raw" />
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="{StaticResource SpacingXS}">
                   <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingS}">
                     <TextBlock Style="{StaticResource HeroTitle}" Text="SuperBar" />

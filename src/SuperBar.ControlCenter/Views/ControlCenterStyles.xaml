@@ -139,14 +139,13 @@
   </Style>
 
   <!--
-    The app tile of a hero card: a 56 px accent square. Put one centered FontIcon inside (FontSize 24,
-    Foreground TextOnAccentFillColorPrimaryBrush).
+    The app icon of a hero card: the full-color SuperBar icon at 56 px, drawn as it is. The icon brings its own
+    plate, so it gets no tile or background behind it.
   -->
-  <Style x:Key="HeroTile" TargetType="Border">
+  <Style x:Key="HeroIcon" TargetType="Image">
     <Setter Property="Width" Value="56" />
     <Setter Property="Height" Value="56" />
-    <Setter Property="CornerRadius" Value="14" />
-    <Setter Property="Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+    <Setter Property="Stretch" Value="Uniform" />
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 

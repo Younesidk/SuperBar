@@ -32,8 +32,10 @@ public sealed partial class ControlCenterWindow : Window
         InitializeComponent();
         ui.Attach(this, Root);
 
+        var hwnd = WindowNative.GetWindowHandle(this);
         ConfigureBackdrop();
-        ConfigureWindow(chrome.GetScale(WindowNative.GetWindowHandle(this)));
+        ConfigureIcon(chrome, hwnd);
+        ConfigureWindow(chrome.GetScale(hwnd));
 
         // The pages live exactly as long as this window, so there is nothing to unsubscribe.
         foreach (var widgets in ViewModel.Pages.OfType<WidgetsPageViewModel>())
@@ -173,6 +175,23 @@ public sealed partial class ControlCenterWindow : Window
             // Windows 10 (or Mica unavailable): the previous solid dark background.
             Root.Background = new SolidColorBrush(Color.FromArgb(0xFF, 0x15, 0x17, 0x1C));
         }
+    }
+
+    /// <summary>
+    /// The window's own icon, for the title bar and Alt+Tab. <c>AppWindow.SetIcon</c> tells WinUI about it; the chrome
+    /// call then sets the large and the small Win32 icon explicitly, each from the .ico frame that matches the
+    /// window's DPI. (SuperBar's own app button for this window reads the icon embedded in SuperBar.exe instead.)
+    /// </summary>
+    private void ConfigureIcon(IWindowChrome chrome, nint hwnd)
+    {
+        var icon = AppAssets.IconPath;
+        if (!File.Exists(icon))
+        {
+            return;
+        }
+
+        AppWindow.SetIcon(icon);
+        chrome.SetWindowIcon(hwnd, icon);
     }
 
     private void ConfigureWindow(double scale)
