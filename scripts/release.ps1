@@ -83,11 +83,16 @@ function Format-Command([string]$Exe, [string[]]$Arguments) {
     return (@($Exe) + @($Arguments | ForEach-Object { Format-Argument $_ })) -join ' '
 }
 
-# Runs a tool, echoes the command, and stops the script when it fails.
+# Runs a tool, echoes the command, and stops the script when it fails. Only the exit code decides: git and gh
+# write progress to stderr, and Windows PowerShell 5.1 turns that into a terminating error under 'Stop' as soon as
+# the script's output is redirected (.\release.ps1 ... *> release.log). Hence the local preference.
 function Invoke-Tool([string]$Exe, [string[]]$Arguments) {
     Write-Host ('> ' + (Format-Command $Exe $Arguments)) -ForegroundColor DarkGray
+    $ErrorActionPreference = 'Continue'
     & $Exe @Arguments
-    if ($LASTEXITCODE -ne 0) { throw "$Exe failed with exit code $LASTEXITCODE." }
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($exitCode -ne 0) { throw "$Exe failed with exit code $exitCode." }
 }
 
 # Runs a tool as a question: returns its output as one string ('' when it printed nothing), or $null when it

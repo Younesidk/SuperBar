@@ -1,19 +1,95 @@
-# SuperBar
+<p align="center">
+  <img src="src/SuperBar.App/Assets/SuperBar.png" alt="SuperBar icon" width="128" height="128">
+</p>
 
-A modern replacement for the Windows taskbar, written in C# / .NET 10 with WinUI 3 (Windows App SDK).
-SuperBar is one continuous bar on the bottom edge of the screen. It holds the Start button, pinned and running applications, integrated widgets and the system section. It reserves its screen space like the real taskbar does, and it hides the native taskbar while it runs.
+<h1 align="center">SuperBar</h1>
 
-> **Status: foundation milestone (0.1).** The architecture, the Windows shell integration, the runtime, the widget system and the Control Center are in place and work on a real desktop. Most features listed under *Not implemented yet* are still to come.
+<p align="center">
+  <strong>A modern, customizable taskbar for Windows.</strong><br>
+  Built with <strong>.NET 11</strong> and <strong>WinUI 3</strong> · for Windows 10 and Windows 11
+</p>
 
-## Build, run, test
+<p align="center">
+  <a href="https://github.com/Younesidk/SuperBar/releases/latest"><strong>Download the latest version</strong></a>
+  ·
+  <a href="https://superbar.younesidk.dev"><strong>Website</strong></a>
+</p>
+
+---
+
+## What is SuperBar?
+
+SuperBar replaces the Windows taskbar with one clean, continuous bar along the bottom of your screen. It keeps
+everything you rely on, like the Start button, your pinned and open apps and the system area, and adds small
+built-in widgets that show useful information at a glance.
+
+It feels like a native part of Windows: maximized windows stop right above it, it comes in a light and a dark
+look with a see-through acrylic background, and it gets out of the way when you play a game or watch a video
+full-screen.
+
+## Highlights
+
+- **Everything in one bar.** Start, your pinned apps, your open windows, widgets and the system area, side by side.
+- **Handy widgets.** A clock, live CPU and memory usage, and "Now Playing" with play/pause and next track for
+  whatever music or video is playing.
+- **Make it yours.** The Control Center lets you pin and reorder apps, choose and arrange widgets, and change
+  how the bar looks (height, light or dark, transparency, accent color). Changes show up instantly.
+- **Always safe to try.** When you close SuperBar, your normal Windows taskbar comes straight back. Even if
+  something goes wrong, SuperBar puts it back the next time it starts.
+- **Stays up to date.** SuperBar checks for updates and installs them for you with one click.
+- **Light and fast.** Widgets pause while you are in a full-screen game or video, so they don't cost you
+  performance.
+
+## Get SuperBar
+
+1. Download **`SuperBar-win-Setup.exe`** from the [latest release](https://github.com/Younesidk/SuperBar/releases/latest).
+2. Run it. It installs just for you, with no admin rights needed, and starts SuperBar right away.
+
+You can also learn more and download SuperBar from the website: **[superbar.younesidk.dev](https://superbar.younesidk.dev)**.
+
+> Windows may show a SmartScreen warning the first time, because the installer is not code-signed yet.
+> Choose **More info → Run anyway** to continue.
+
+**Using SuperBar:** right-click an empty part of the bar to open the **Control Center** or to exit. In the
+Control Center you can also turn on **Start with Windows**, and check for updates under **About**.
+
+**Uninstalling:** remove SuperBar from **Settings → Apps → Installed apps** like any other app. Your
+Windows taskbar is restored automatically.
+
+## Where SuperBar is today
+
+SuperBar is in its first release (**version 0.1**). The core experience works on a real desktop today, and more
+is on the way:
+
+- Icons from other apps in the system tray, right inside the bar
+- Window previews when you hover over an app
+- Drag-and-drop to rearrange apps directly on the bar
+- A bar on every monitor, a bar at the top of the screen, and auto-hide
+- More widgets, such as a calendar and weather
+
+---
+
+## For developers
+
+Everything below is the technical detail: how to build SuperBar, how it is put together, and how it replaces the
+taskbar safely.
+
+SuperBar is written in C# on **.NET 11** with **WinUI 3** (Windows App SDK). It registers itself as a shell AppBar,
+so it reserves its screen space like the real taskbar does, and it hides the native taskbar while it runs.
+
+> **Status: foundation milestone (0.1).** The architecture, the Windows shell integration, the runtime, the widget
+> system and the Control Center are in place and work on a real desktop. Most features listed under
+> *Not implemented yet* are still to come.
+
+### Build, run, test
 
 ```powershell
 dotnet build SuperBar.slnx -p:Platform=x64      # or -p:Platform=ARM64
 dotnet test --project tests/SuperBar.Tests
-src/SuperBar.App/bin/x64/Debug/net10.0-windows10.0.19041.0/win-x64/SuperBar.exe
+src/SuperBar.App/bin/x64/Debug/net11.0-windows10.0.19041.0/win-x64/SuperBar.exe
 ```
 
-Requirements: the .NET 10 SDK on Windows 10 1809 (build 17763) or later. SuperBar is an **unpackaged** desktop app
+Requirements: the .NET 11 SDK on Windows 10 1809 (build 17763) or later. SuperBar is an **unpackaged** desktop app
 that carries the Windows App SDK runtime with it (`WindowsAppSDKSelfContained`), so nothing else needs to be installed
 and it can be shipped with Velopack. The WinUI projects build per architecture (x64 or ARM64); a plain
 `dotnet build SuperBar.slnx` (Any CPU) builds them as x64.
@@ -28,7 +104,7 @@ Right-click an empty part of the bar to open the Control Center or exit. Exiting
 
 Data lives in `%LOCALAPPDATA%\SuperBarData\`: `settings.db` (SQLite), `taskbar-recovery.json` and `logs\`. It is deliberately not `%LOCALAPPDATA%\SuperBar\`: that is the install folder, which the installer replaces on install and repair and removes on uninstall. Data left there by a build older than 0.1.0 is moved over on the first start.
 
-## Install, update, release
+### Install, update, release
 
 SuperBar ships as a [Velopack](https://velopack.io) installer (`SuperBar-win-Setup.exe`, per user, no admin rights) published on GitHub Releases. The installed app lives in `%LOCALAPPDATA%\SuperBar\current\`; an update replaces the contents of `current`, so the path of `SuperBar.exe` never changes.
 
@@ -45,7 +121,7 @@ To release, from a clean commit that is pushed to GitHub:
 
 The script publishes self-contained for win-x64, packs with `vpk` (a local dotnet tool pinned in `dotnet-tools.json` to the version of the Velopack package), and uploads the installer, the portable zip, the feed files (`releases.win.json`, `RELEASES`, `assets.win.json`) and that version's `.nupkg` packages. From the second release on it first downloads the previous one, so a delta package is built. `-Notes` / `-NotesFile` set the release notes; `-SkipGitTag` lets GitHub create the tag. The installer is not code-signed, so Windows SmartScreen warns on first run.
 
-## Solution structure
+### Solution structure
 
 | Project | Responsibility | Depends on |
 |---|---|---|
@@ -67,7 +143,7 @@ Only `SuperBar.App`, `SuperBar.Runtime` and `SuperBar.ControlCenter` reference W
 presentation model (the taskbar renders it with the view marked `[WidgetViewFor(typeof(TModel))]`), and timers go
 through `IUiDispatcher`, so the widget system is tested without a UI thread.
 
-## How the taskbar replacement works
+### How the taskbar replacement works
 
 An ordinary borderless window at the bottom of the screen is not a taskbar: maximized windows cover it and the real taskbar stays visible. SuperBar does three things to behave like a taskbar:
 
@@ -93,7 +169,7 @@ Explorer is never killed or restarted, and the registry is never edited directly
 **3. It survives shell events.**
 A hidden listener window receives the `TaskbarCreated` broadcast when Explorer restarts. SuperBar then hides the new taskbar again and re-registers its AppBar, which the shell forgets when Explorer restarts.
 
-### Crash safety
+#### Crash safety
 
 | Situation | What happens |
 |---|---|
@@ -102,12 +178,12 @@ A hidden listener window receives the `TaskbarCreated` broadcast when Explorer r
 | Hard kill (`End task`) | No code can run. The taskbar reappears on its own once SuperBar's hook dies (verified on Windows 11). If SuperBar had switched on auto-hide, auto-hide stays on until the next SuperBar start or `--restore-taskbar`, which read the recovery record and revert it |
 | Faulty widget | It is isolated behind an error placeholder; the bar keeps running |
 
-### Known limitations of this approach
+#### Known limitations of this approach
 
 - Only the **primary monitor** gets a SuperBar. Secondary-monitor taskbars stay native. They follow the auto-hide setting while SuperBar runs. The model and AppBar options already carry a monitor handle for per-monitor bars.
 - Start, Quick Settings (Win+A), Notification Center (Win+N) and Task Manager are opened by sending their system shortcuts. They are Explorer/ShellExperienceHost surfaces and are not re-implemented.
 
-## Widgets
+### Widgets
 
 A widget is two classes and no registration code:
 
@@ -138,13 +214,13 @@ Fault isolation: every call into a widget is guarded. A widget that throws (in a
 
 Widgets render **inside** the bar's layout. They never get their own window. The built-in widgets are `ClockWidget`, `SystemResourcesWidget` (CPU and memory, sampled every 2 s while active) and `MediaWidget` ("Now Playing": the current Windows media session, with Play/Pause and Next).
 
-## Settings
+### Settings
 
 `ISettingsService` publishes immutable snapshots. `Update` clones the current snapshot, applies the change, normalizes it (clamps values, drops dangling references, guarantees Start and Applications sections), saves it, swaps it in, and raises `Changed`. The runtime applies changes live.
 Storage is SQLite, with one JSON document per area (`appearance`, `behavior`, `layout`, `widgets`, `pinnedApps`). A corrupt area resets alone.
 The recovery record is deliberately a plain JSON file, so it works even if the database is unavailable.
 
-## Not implemented yet
+### Not implemented yet
 
 - **Notification-area (tray) icons.** Hosting other apps' tray icons requires implementing the shell's `Shell_TrayWnd` notification protocol. Until then the overflow chevron opens Explorer's own "hidden icons" flyout (via Win+B, then moved next to the bar), so icons shown directly on the native taskbar are not visible in SuperBar.
 - Window thumbnails/previews. Grouped windows currently cycle on click.
@@ -152,5 +228,5 @@ The recovery record is deliberately a plain JSON file, so it works even if the d
 - Drag-and-drop reordering on the bar. The Control Center already supports reorder and zone changes.
 - Per-monitor bars, top-edge placement, auto-hide for SuperBar itself.
 - Code signing of the installer, and an ARM64 release (the release script packs win-x64 only).
-- More widgets (calendar, weather, media, session statistics).
+- More widgets (calendar, weather, session statistics).
 - UWP/packaged apps are grouped by `ApplicationFrameHost` and may not group perfectly.
