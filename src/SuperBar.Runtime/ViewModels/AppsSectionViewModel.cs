@@ -11,8 +11,9 @@ using SuperBar.Runtime.Services;
 namespace SuperBar.Runtime.ViewModels;
 
 /// <summary>
-/// Pinned and running applications. Running windows are grouped by executable path and matched to pins
-/// by path, so a pinned app lights up when it runs. Updates are diffed to avoid re-creating buttons.
+/// Pinned and running applications. Running windows are matched to pins like the Windows taskbar does (AppUserModelID
+/// first, then executable, see <see cref="PinMatching"/>), so a pinned app lights up when it runs instead of getting a
+/// second button; the others are grouped by app id or executable. Updates are diffed to avoid re-creating buttons.
 /// <para>
 /// The user can drag buttons into any order. That order is kept for the session (running apps included) and the
 /// pinned apps' order is persisted through <see cref="PinOrderChanged"/>.
@@ -39,7 +40,7 @@ public sealed class AppsSectionViewModel : SectionViewModel
     /// <summary>"Pin to taskbar": the new pin, and its position among the pinned apps.</summary>
     public event Action<PinnedApp, int>? PinRequested;
 
-    /// <summary>"Unpin from taskbar": the key (lower-cased path) of the pin to remove.</summary>
+    /// <summary>"Unpin from taskbar": the key (<see cref="AppOrdering.PinKey(PinnedApp)"/>) of the pin to remove.</summary>
     public event Action<string>? UnpinRequested;
 
     public AppsSectionViewModel(string id, IWindowTracker tracker, IWindowSwitcher switcher, IAppLauncher launcher, IconCache icons, ILogger logger) : base(id)
@@ -59,9 +60,20 @@ public sealed class AppsSectionViewModel : SectionViewModel
     /// <summary>A button is appearing or disappearing: the row is changing width, so a drag waits.</summary>
     public bool IsAnimating => Apps.Any(a => a.IsLeaving || a.IsAnimating);
 
+    /// <summary>The pins on the bar, in order (see <see cref="AppOrdering.ShownPins"/>).</summary>
     public void SetPins(IReadOnlyList<PinnedApp> pins)
     {
         _pins = pins;
+
+        // A new pin order (pins reordered in Windows) wins over this session's drag order for the pins themselves.
+        _manualOrder = AppOrdering.FollowPinOrder(_manualOrder, pins.Select(AppOrdering.PinKey).ToList());
+        Rebuild();
+    }
+
+    /// <summary>A sync rendered new icons for the pins.</summary>
+    public void RefreshIcons()
+    {
+        _icons.InvalidatePins();
         Rebuild();
     }
 
@@ -113,8 +125,11 @@ public sealed class AppsSectionViewModel : SectionViewModel
         }
     }
 
+    /// <summary>The button key of a window no pin claims: its app id (as Windows groups), else its executable.</summary>
     internal static string GroupKey(TrackedWindow w) =>
-        string.IsNullOrEmpty(w.ProcessPath) ? $"hwnd:{w.Handle}" : w.ProcessPath.ToLowerInvariant();
+        !string.IsNullOrEmpty(w.AppUserModelId) ? "aumid:" + w.AppUserModelId.ToLowerInvariant()
+        : string.IsNullOrEmpty(w.ProcessPath) ? $"hwnd:{w.Handle}"
+        : w.ProcessPath.ToLowerInvariant();
 
     private void Rebuild()
     {
@@ -138,7 +153,8 @@ public sealed class AppsSectionViewModel : SectionViewModel
         var runningOrder = new List<string>();
         foreach (var w in _tracker.Windows)
         {
-            var key = GroupKey(w);
+            var pinIndex = PinMatching.FindPin(_pins, w.AppUserModelId, w.ProcessPath);
+            var key = pinIndex >= 0 ? AppOrdering.PinKey(_pins[pinIndex]) : GroupKey(w);
             if (!windowsByKey.TryGetValue(key, out var list))
             {
                 windowsByKey[key] = list = new List<TrackedWindow>();
@@ -152,7 +168,7 @@ public sealed class AppsSectionViewModel : SectionViewModel
         var seen = new HashSet<string>();
         foreach (var pin in _pins)
         {
-            var key = pin.Path.ToLowerInvariant();
+            var key = AppOrdering.PinKey(pin);
             if (seen.Add(key))
             {
                 desired.Add((key, pin));
@@ -255,13 +271,19 @@ public sealed class AppsSectionViewModel : SectionViewModel
     {
         if (pin is not null)
         {
-            return _icons.ForFile(pin.Path);
+            return _icons.ForPin(pin);
         }
 
         var first = windows.FirstOrDefault();
         if (first is null)
         {
             return null;
+        }
+
+        // A packaged app's logo, as the Windows taskbar shows it (its window icon is often blank).
+        if (first is { IsPackagedApp: true, AppUserModelId: { } appId })
+        {
+            return _icons.ForShellItem(PinMatching.AppsFolderPath(appId)) ?? _icons.ForWindow(first.Handle);
         }
 
         // UWP apps run inside ApplicationFrameHost; its file icon is generic, the window icon is better.
@@ -278,9 +300,9 @@ public sealed class AppsSectionViewModel : SectionViewModel
     {
         if (app.Windows.Count == 0)
         {
-            if (app.LaunchPath is { } path)
+            if (app.LaunchTarget is { } target)
             {
-                _launcher.Launch(path, app.LaunchArguments);
+                _launcher.Launch(target);
             }
 
             return;
@@ -319,16 +341,22 @@ public sealed class AppsSectionViewModel : SectionViewModel
         }
 
         var index = Apps.TakeWhile(a => !ReferenceEquals(a, app)).Count(a => a.IsPinned);
-        var pin = new PinnedApp { DisplayName = AppIdentity.FriendlyName(path, app.DisplayName), Path = path };
+        var packagedId = app.Windows.FirstOrDefault(w => w.IsPackagedApp)?.AppUserModelId;
+        var pin = new PinnedApp
+        {
+            DisplayName = packagedId is null ? AppIdentity.FriendlyName(path, app.DisplayName) : app.DisplayName,
+            Path = path,
+            AppUserModelId = packagedId,
+        };
         _logger.LogInformation("Pinning {App} ({Path}) at position {Index}", pin.DisplayName, path, index);
         PinRequested?.Invoke(pin, index);
     }
 
     internal void OnLaunchNew(AppButtonViewModel app)
     {
-        if (app.LaunchPath is { } path)
+        if (app.LaunchTarget is { } target)
         {
-            _launcher.Launch(path, app.LaunchArguments);
+            _launcher.Launch(target);
         }
     }
 }
@@ -370,17 +398,19 @@ public sealed class AppButtonViewModel : ObservableObject
     public ICommand TogglePinCommand => _togglePinCommand;
 
     /// <summary>
-    /// A running app can be pinned when it has a launchable executable. Store (UWP) apps run inside
-    /// ApplicationFrameHost.exe, which cannot be launched to start them, so they cannot be pinned yet.
+    /// A running app can be pinned when it can be started again: an executable, or a packaged app's id (UWP apps run
+    /// inside ApplicationFrameHost.exe, which cannot be launched to start them; their id can).
     /// </summary>
     public bool CanPin =>
         !IsPinned && AppIdentity.IsPinnable(LaunchPath);
 
     public List<TrackedWindow> Windows { get; private set; } = [];
 
+    /// <summary>The executable or <c>shell:AppsFolder</c> path a pin of this app would have.</summary>
     public string? LaunchPath { get; private set; }
 
-    public string? LaunchArguments { get; private set; }
+    /// <summary>What clicking a closed pin, or "Open new window", starts.</summary>
+    public AppLaunchTarget? LaunchTarget { get; private set; }
 
     public string DisplayName { get => _displayName; private set => SetProperty(ref _displayName, value); }
 
@@ -418,7 +448,7 @@ public sealed class AppButtonViewModel : ObservableObject
     /// <summary>Set by the view while the pointer is over the button.</summary>
     public bool IsHovered { get => _isHovered; set => SetProperty(ref _isHovered, value); }
 
-    public bool CanLaunch => LaunchPath is not null;
+    public bool CanLaunch => LaunchTarget is not null;
 
     /// <summary>One of the app's windows asked for attention and has not been looked at yet.</summary>
     public bool IsFlashing { get => _isFlashing; private set => SetProperty(ref _isFlashing, value); }
@@ -460,10 +490,27 @@ public sealed class AppButtonViewModel : ObservableObject
     {
         Windows = windows;
         IsPinned = pin is not null;
-        LaunchPath = pin?.Path ?? windows.FirstOrDefault()?.ProcessPath;
-        LaunchArguments = pin?.Arguments;
+        var first = windows.FirstOrDefault();
+        if (pin is not null)
+        {
+            LaunchPath = pin.Path;
+            LaunchTarget = PinMatching.LaunchTarget(pin);
+        }
+        else if (first is { IsPackagedApp: true, AppUserModelId: { } appId })
+        {
+            // Packaged executables cannot be started directly (WindowsApps is locked down): start the app by its id.
+            LaunchPath = PinMatching.AppsFolderPath(appId);
+            LaunchTarget = new AppLaunchTarget(LaunchPath, PackagedAppId: appId);
+        }
+        else
+        {
+            LaunchPath = first?.ProcessPath;
+            LaunchTarget = LaunchPath is null ? null : new AppLaunchTarget(LaunchPath);
+        }
+
+        var hostedByFrame = first?.ProcessPath?.EndsWith("ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase) == true;
         DisplayName = pin?.DisplayName
-                      ?? (windows.FirstOrDefault()?.ProcessPath is { } p ? Path.GetFileNameWithoutExtension(p) : windows.FirstOrDefault()?.Title)
+                      ?? (first?.ProcessPath is { } p && !hostedByFrame ? Path.GetFileNameWithoutExtension(p) : first?.Title)
                       ?? "";
         OnPropertyChanged(nameof(Initial));
         OnPropertyChanged(nameof(CanLaunch));

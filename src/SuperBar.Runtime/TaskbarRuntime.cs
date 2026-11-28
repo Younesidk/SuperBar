@@ -36,6 +36,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
     private TaskbarWindow? _window;
     private WindowPreviewPopup? _preview;
     private IAppBarRegistration? _appBar;
+    private WindowsPinSync? _pinSync;
     private bool _disposed;
 
     public TaskbarRuntime(
@@ -92,9 +93,16 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
             _viewModel = CreateViewModel();
             _viewModel.Apps.PinOrderChanged += keys =>
                 _settings.Update(s => s.PinnedApps = AppOrdering.ReorderPins(s.PinnedApps, keys));
-            _viewModel.Apps.PinRequested += (pin, index) => _settings.Update(s => AppOrdering.AddPin(s.PinnedApps, pin, index));
+            _viewModel.Apps.PinRequested += (pin, index) => _settings.Update(s => AppOrdering.AddPin(s.PinnedApps, pin, index, s.Behavior.SyncWindowsPins));
             _viewModel.Apps.UnpinRequested += key => _settings.Update(s => AppOrdering.RemovePin(s.PinnedApps, key));
             _viewModel.SectionOrderChanged += (zone, keys) => _settings.Update(s => SectionOrdering.ReorderZone(s.Layout, zone, keys));
+
+            // The pins saved by the last sync are already on the bar (with their cached icons); this catches up with
+            // Windows and then follows it live.
+            var apps = _viewModel.Apps;
+            _pinSync = _services.GetRequiredService<WindowsPinSync>();
+            _pinSync.IconsChanged += (_, _) => apps.RefreshIcons();
+            _pinSync.Start();
         }
 
         _viewModel.Apply(settings);
@@ -239,6 +247,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
 
     private void OnExplorerRestarted()
     {
+        _pinSync?.OnExplorerRestarted();
         if (!IsEnabled)
         {
             return;

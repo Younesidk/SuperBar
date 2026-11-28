@@ -35,6 +35,9 @@ public static class WindowsServiceCollectionExtensions
         services.AddSingleton<ICursorService, CursorService>();
         services.AddSingleton<ISystemMetricsProvider, SystemMetricsProvider>();
 
+        // Thread-safe: reads on short-lived STA threads of its own, watches on background threads.
+        services.AddSingleton<IWindowsTaskbarPinService, WindowsTaskbarPinService>();
+
         // Created on first use (by the Now Playing widget), on the UI thread.
         services.AddSingleton<IMediaSessionService, GsmtcMediaSessionService>();
 

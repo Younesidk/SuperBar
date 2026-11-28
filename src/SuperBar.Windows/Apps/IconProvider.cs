@@ -70,6 +70,19 @@ internal sealed class IconProvider(ILogger<IconProvider> logger) : IIconProvider
         return null;
     }
 
+    public IconPixels? GetShellItemIcon(string parsingName, int sizePx)
+    {
+        try
+        {
+            return ShellImages.FromParsingName(parsingName, sizePx);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Shell icon failed for {Item}", parsingName);
+            return null;
+        }
+    }
+
     internal static IconPixels? FromHIcon(nint hIcon)
     {
         if (!GetIconInfo(hIcon, out var info))

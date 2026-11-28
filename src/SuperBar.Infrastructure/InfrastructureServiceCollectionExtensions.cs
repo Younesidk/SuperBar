@@ -24,6 +24,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<ITaskbarRecoveryStore>(_ => new JsonTaskbarRecoveryStore(paths.RecoveryFilePath));
         services.AddSingleton<IBadgeStore>(_ => new JsonBadgeStore(paths.BadgesFilePath));
+        services.AddSingleton<IPinIconStore>(_ => new FilePinIconStore(paths.PinIconDirectory));
         return services;
     }
 }

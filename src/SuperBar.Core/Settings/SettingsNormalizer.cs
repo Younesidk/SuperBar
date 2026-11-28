@@ -94,9 +94,17 @@ public static class SettingsNormalizer
 
         settings.Layout = layout;
 
+        // A pin nothing pins any more is gone; only a pin that lives in Windows alone can be hidden from the bar.
         settings.PinnedApps = settings.PinnedApps
-            .Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Path))
+            .Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Path) && (p.PinnedInSuperBar || p.PinnedInWindows))
             .ToList();
+        foreach (var pin in settings.PinnedApps)
+        {
+            if (pin.PinnedInSuperBar || !pin.PinnedInWindows)
+            {
+                pin.HiddenFromBar = false;
+            }
+        }
 
         settings.SchemaVersion = SuperBarSettings.CurrentSchemaVersion;
         return settings;

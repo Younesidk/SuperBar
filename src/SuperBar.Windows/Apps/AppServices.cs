@@ -9,7 +9,59 @@ namespace SuperBar.Windows.Apps;
 
 internal sealed class AppLauncher(ILogger<AppLauncher> logger) : IAppLauncher
 {
-    public bool Launch(string path, string? arguments = null)
+    public bool Launch(string path, string? arguments = null) => Start(path, arguments, workingDirectory: null);
+
+    public bool Launch(AppLaunchTarget target)
+    {
+        // The pin's own shortcut carries everything the Windows taskbar would use: arguments, working directory,
+        // AppUserModelID (so the new window groups with its pin), "Run as administrator".
+        if (!string.IsNullOrEmpty(target.ShortcutPath) && File.Exists(target.ShortcutPath))
+        {
+            return Start(target.ShortcutPath, null, null, setWorkingDirectory: false);
+        }
+
+        if (!string.IsNullOrEmpty(target.PackagedAppId) && ActivatePackagedApp(target.PackagedAppId, target.Arguments))
+        {
+            return true;
+        }
+
+        if (PinMatching.AppsFolderId(target.Path) is { } appId)
+        {
+            // Explorer resolves any app of the Start menu's list by id, packaged or not.
+            return Start("explorer.exe", PinMatching.AppsFolderPath(appId), null, setWorkingDirectory: false);
+        }
+
+        return Start(target.Path, target.Arguments, target.WorkingDirectory);
+    }
+
+    private bool ActivatePackagedApp(string appId, string? arguments)
+    {
+        object? manager = null;
+        try
+        {
+            manager = Activator.CreateInstance(Type.GetTypeFromCLSID(ShellInterop.CLSID_ApplicationActivationManager, throwOnError: true)!);
+            var hr = ((IApplicationActivationManager)manager!).ActivateApplication(appId, arguments, ShellInterop.AO_NONE, out var processId);
+            if (hr == 0)
+            {
+                logger.LogInformation("Activated packaged app {AppId} (process {ProcessId})", appId, processId);
+                return true;
+            }
+
+            logger.LogInformation("Activating packaged app {AppId} failed (0x{Result:X8}); starting it through Explorer", appId, hr);
+        }
+        catch (Exception ex)
+        {
+            logger.LogInformation(ex, "Activating packaged app {AppId} failed; starting it through Explorer", appId);
+        }
+        finally
+        {
+            ShellInterop.Release(manager);
+        }
+
+        return false;
+    }
+
+    private bool Start(string path, string? arguments, string? workingDirectory, bool setWorkingDirectory = true)
     {
         try
         {
@@ -20,14 +72,14 @@ internal sealed class AppLauncher(ILogger<AppLauncher> logger) : IAppLauncher
                 Arguments = arguments ?? "",
             };
 
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+            var directory = !string.IsNullOrEmpty(workingDirectory) ? workingDirectory : Path.GetDirectoryName(path);
+            if (setWorkingDirectory && !string.IsNullOrEmpty(directory) && Directory.Exists(directory))
             {
                 info.WorkingDirectory = directory;
             }
 
             Process.Start(info)?.Dispose();
-            logger.LogInformation("Launched {Path}", path);
+            logger.LogInformation("Launched {Path} {Arguments}", path, arguments ?? "");
             return true;
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)

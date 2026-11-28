@@ -61,6 +61,12 @@ public sealed class BehaviorSettings
     /// <summary>Start SuperBar at sign-in. The app applies it to Windows' per-user Run key (installed builds only).</summary>
     public bool StartWithWindows { get; set; }
 
+    /// <summary>
+    /// Show the apps pinned to the Windows taskbar, in the same order, and follow live as they are pinned, unpinned or
+    /// reordered in Windows. Pins made in SuperBar stay either way.
+    /// </summary>
+    public bool SyncWindowsPins { get; set; } = true;
+
     public MonitorMode MonitorMode { get; set; } = MonitorMode.PrimaryOnly;
 }
 
@@ -91,15 +97,59 @@ public sealed class WidgetInstanceSettings
     public JsonObject Options { get; set; } = new();
 }
 
+/// <summary>
+/// An application pinned to the bar. A pin comes from SuperBar itself, from the Windows taskbar (kept in sync), or
+/// both; it stays on the bar while either still pins it. Pins are matched to running windows by
+/// <c>PinMatching</c> and keyed by <c>AppOrdering.PinKey</c>.
+/// </summary>
 public sealed class PinnedApp
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string DisplayName { get; set; } = "";
 
-    /// <summary>Full path to an executable (or shortcut / shell target).</summary>
+    /// <summary>
+    /// Full path to an executable (or shortcut / shell target). A packaged (Store / MSIX) app is
+    /// <c>shell:AppsFolder\&lt;AppUserModelID&gt;</c>.
+    /// </summary>
     public string Path { get; set; } = "";
 
     public string? Arguments { get; set; }
+
+    /// <summary>The working directory the pin's shortcut starts the app in, if it names one.</summary>
+    public string? WorkingDirectory { get; set; }
+
+    /// <summary>
+    /// The app's explicit AppUserModelID: every packaged app has one, and so do desktop apps whose shortcut sets one
+    /// (browser profiles, web apps, Electron apps). Windows groups windows by it, and so does SuperBar.
+    /// </summary>
+    public string? AppUserModelId { get; set; }
+
+    /// <summary>
+    /// The shortcut Windows keeps for this pin (<c>User Pinned\TaskBar\*.lnk</c>). Launched as it is, so its arguments,
+    /// working directory and "Run as administrator" flag apply exactly as on the Windows taskbar.
+    /// </summary>
+    public string? ShortcutPath { get; set; }
+
+    /// <summary>Pinned on the Windows taskbar, as of the last sync.</summary>
+    public bool PinnedInWindows { get; set; }
+
+    /// <summary>Pinned in SuperBar itself. True for every pin saved before Windows pins were synced.</summary>
+    public bool PinnedInSuperBar { get; set; } = true;
+
+    /// <summary>
+    /// Unpinned in SuperBar while still pinned in Windows. The entry is kept, hidden, so the next sync does not bring it
+    /// back; it goes away when the app is unpinned in Windows too (pinning it there again shows it again).
+    /// </summary>
+    public bool HiddenFromBar { get; set; }
+
+    /// <summary>
+    /// The pin's position on the Windows taskbar at the last sync. Comparing it with the next sync tells whether the
+    /// user reordered pins in Windows (then SuperBar follows) or only in SuperBar (then SuperBar keeps its own order).
+    /// </summary>
+    public int? WindowsOrder { get; set; }
+
+    /// <summary>A copy (every member is a value or a string).</summary>
+    public PinnedApp Clone() => (PinnedApp)MemberwiseClone();
 }
 
 /// <summary>Root settings aggregate. Treated as an immutable snapshot once published by the settings service.</summary>

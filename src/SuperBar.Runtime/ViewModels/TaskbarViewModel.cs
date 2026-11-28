@@ -110,7 +110,7 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
 
     public void Apply(SuperBarSettings settings)
     {
-        Apps.SetPins(settings.PinnedApps);
+        Apps.SetPins(AppOrdering.ShownPins(settings));
         SyncWidgets(settings);
         SyncZone(LeftSections, settings, TaskbarZone.Left);
         SyncZone(CenterSections, settings, TaskbarZone.Center);

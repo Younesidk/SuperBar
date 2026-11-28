@@ -35,4 +35,10 @@ public sealed class AppPaths : IAppPaths
 
     /// <summary>App badges (overlay icons) kept across a restart of the bar.</summary>
     public string BadgesFilePath => Path.Combine(DataDirectory, "badges.json");
+
+    /// <summary>
+    /// The icons of the pins synced from the Windows taskbar, so they show at once on the next start, even before
+    /// Explorer is ready. The pins themselves are kept with the settings.
+    /// </summary>
+    public string PinIconDirectory => Path.Combine(DataDirectory, "pin-icons");
 }

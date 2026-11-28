@@ -15,6 +15,7 @@ public static class RuntimeServiceCollectionExtensions
     public static IServiceCollection AddSuperBarRuntime(this IServiceCollection services)
     {
         services.AddSingleton<IconCache>();
+        services.AddSingleton<WindowsPinSync>();
         services.AddSingleton<TaskbarTheme>();
         services.AddSingleton<WidgetViewResolver>();
         services.AddSingleton<WidgetFlyoutSurface>();

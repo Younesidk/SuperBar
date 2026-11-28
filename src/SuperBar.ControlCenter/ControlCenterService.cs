@@ -34,6 +34,7 @@ public sealed class ControlCenterService(IServiceProvider services, IUiDispatche
             services.GetRequiredService<IAppPaths>(),
             services.GetRequiredService<IAppLauncher>(),
             services.GetRequiredService<IIconProvider>(),
+            services.GetRequiredService<IPinIconStore>(),
             services.GetRequiredService<IWindowTracker>(),
             services.GetRequiredService<INativeTaskbarController>(),
             services.GetRequiredService<IUpdateService>(),
