@@ -11,6 +11,8 @@
 
 <p align="center">
   <a href="https://github.com/Younesidk/SuperBar/releases/latest"><strong>Download the latest version</strong></a>
+  ·
+  <a href="https://superbar.younesidk.dev"><strong>Website</strong></a>
 </p>
 
 ---
@@ -42,6 +44,8 @@ full-screen.
 
 1. Download **`SuperBar-win-Setup.exe`** from the [latest release](https://github.com/Younesidk/SuperBar/releases/latest).
 2. Run it. It installs just for you, with no admin rights needed, and starts SuperBar right away.
+
+You can also learn more and download SuperBar from the website: **[superbar.younesidk.dev](https://superbar.younesidk.dev)**.
 
 > Windows may show a SmartScreen warning the first time, because the installer is not code-signed yet.
 > Choose **More info → Run anyway** to continue.
