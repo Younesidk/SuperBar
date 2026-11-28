@@ -36,6 +36,8 @@ public sealed class ControlCenterService(IServiceProvider services, IUiDispatche
             services.GetRequiredService<IIconProvider>(),
             services.GetRequiredService<IWindowTracker>(),
             services.GetRequiredService<INativeTaskbarController>(),
+            services.GetRequiredService<IUpdateService>(),
+            services.GetRequiredService<IStartupRegistration>(),
             ui,
             dispatcher);
 

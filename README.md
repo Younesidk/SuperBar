@@ -26,7 +26,24 @@ and it can be shipped with Velopack. The WinUI projects build per architecture (
 
 Right-click an empty part of the bar to open the Control Center or exit. Exiting always restores the Windows taskbar.
 
-Data lives in `%LOCALAPPDATA%\SuperBar\`: `settings.db` (SQLite), `taskbar-recovery.json` and `logs\`.
+Data lives in `%LOCALAPPDATA%\SuperBarData\`: `settings.db` (SQLite), `taskbar-recovery.json` and `logs\`. It is deliberately not `%LOCALAPPDATA%\SuperBar\`: that is the install folder, which the installer replaces on install and repair and removes on uninstall. Data left there by a build older than 0.1.0 is moved over on the first start.
+
+## Install, update, release
+
+SuperBar ships as a [Velopack](https://velopack.io) installer (`SuperBar-win-Setup.exe`, per user, no admin rights) published on GitHub Releases. The installed app lives in `%LOCALAPPDATA%\SuperBar\current\`; an update replaces the contents of `current`, so the path of `SuperBar.exe` never changes.
+
+- **Updates.** Control Center → About checks the repository's GitHub Releases, downloads the update (a delta when there is one) and restarts into it. `IUpdateService` (`VelopackUpdateService`) owns the state; a development build reports "not installed" and does nothing.
+- **The taskbar is always restored first.** "Restart to update" starts the updater and then exits SuperBar in order, which restores the Windows taskbar. Should SuperBar be killed instead (the uninstaller does that), the `InstallerHooks` that Velopack runs before an update and before an uninstall restore it from the recovery record. The uninstall hook also removes the "Start with Windows" entry.
+- **Start with Windows** (Control Center → General) is the value `SuperBar` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. `StartWithWindowsSync` keeps it in line with the setting, at start-up and on every change. Development builds never register themselves.
+
+To release, from a clean commit that is pushed to GitHub:
+
+```powershell
+.\scripts\release.ps1 -Version 0.1.0 -DryRun     # build + pack only: artifacts\releases\SuperBar-win-Setup.exe
+.\scripts\release.ps1 -Version 0.1.0             # also tags v0.1.0 and creates the GitHub release
+```
+
+The script publishes self-contained for win-x64, packs with `vpk` (a local dotnet tool pinned in `dotnet-tools.json` to the version of the Velopack package), and uploads the installer, the portable zip, the feed files (`releases.win.json`, `RELEASES`, `assets.win.json`) and that version's `.nupkg` packages. From the second release on it first downloads the previous one, so a delta package is built. `-Notes` / `-NotesFile` set the release notes; `-SkipGitTag` lets GitHub create the tag. The installer is not code-signed, so Windows SmartScreen warns on first run.
 
 ## Solution structure
 
@@ -134,6 +151,6 @@ The recovery record is deliberately a plain JSON file, so it works even if the d
 - `.lnk` target resolution for matching shortcuts to running apps. Jump lists. (Pinning and unpinning work from the bar's right-click menu and from the Control Center's Applications page.)
 - Drag-and-drop reordering on the bar. The Control Center already supports reorder and zone changes.
 - Per-monitor bars, top-edge placement, auto-hide for SuperBar itself.
-- Start with Windows, Velopack packaging and update feed. The Velopack hook is already wired in `Main`.
+- Code signing of the installer, and an ARM64 release (the release script packs win-x64 only).
 - More widgets (calendar, weather, media, session statistics).
 - UWP/packaged apps are grouped by `ApplicationFrameHost` and may not group perfectly.

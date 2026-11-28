@@ -58,7 +58,7 @@ public sealed class BehaviorSettings
     /// <summary>Hide the native Windows taskbar while SuperBar runs (restored on exit).</summary>
     public bool HideNativeTaskbar { get; set; } = true;
 
-    /// <summary>Not implemented yet; persisted so the Control Center can show it.</summary>
+    /// <summary>Start SuperBar at sign-in. The app applies it to Windows' per-user Run key (installed builds only).</summary>
     public bool StartWithWindows { get; set; }
 
     public MonitorMode MonitorMode { get; set; } = MonitorMode.PrimaryOnly;

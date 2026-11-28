@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Reflection;
 using System.Windows.Input;
 using Microsoft.UI.Xaml.Media;
 using SuperBar.Core.Layout;
@@ -11,13 +10,6 @@ using SuperBar.Core.Shell;
 using SuperBar.Widgets;
 
 namespace SuperBar.ControlCenter.ViewModels;
-
-/// <summary>What the Control Center says about the running application.</summary>
-public static class AppInfo
-{
-    /// <summary>The application version, e.g. "0.1.0" (the entry assembly's; set once in Directory.Build.props).</summary>
-    public static string Version { get; } = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.1.0";
-}
 
 /// <summary>The window's shell: the pages, the selected one, and the navigation pane's status footer.</summary>
 public sealed class ControlCenterViewModel : ObservableObject, IDisposable
@@ -36,21 +28,24 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
         IIconProvider icons,
         IWindowTracker tracker,
         INativeTaskbarController nativeTaskbar,
+        IUpdateService updates,
+        IStartupRegistration startup,
         IControlCenterUi ui,
         IUiDispatcher dispatcher)
     {
         _runtime = runtime;
+        VersionLabel = "v" + updates.CurrentVersion;
         _runtime.StateChanged += OnRuntimeStateChanged;
         ExitCommand = new RelayCommand(runtime.Exit);
 
         Pages = (PageViewModel[])
         [
-            new GeneralPageViewModel(settings, runtime, ui),
+            new GeneralPageViewModel(settings, runtime, startup, ui),
             new AppearancePageViewModel(settings, dispatcher),
             new LayoutPageViewModel(settings, widgets, dispatcher),
             new WidgetsPageViewModel(settings, widgets, settingsEditors, store, ui, dispatcher),
             new ApplicationsPageViewModel(settings, icons, tracker, ui, dispatcher),
-            new AboutPageViewModel(paths, launcher, settings, nativeTaskbar, ui, dispatcher),
+            new AboutPageViewModel(paths, launcher, settings, nativeTaskbar, updates, ui, dispatcher),
         ];
         _selectedPage = Pages[0];
     }
@@ -82,7 +77,8 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
         ? "SuperBar is running in place of the Windows taskbar."
         : "SuperBar is paused and the Windows taskbar is back. Turn it on again under General.";
 
-    public string VersionLabel { get; } = "v" + AppInfo.Version;
+    /// <summary>The running version, e.g. "v0.1.0".</summary>
+    public string VersionLabel { get; }
 
     /// <summary>Restores the Windows taskbar and ends the application.</summary>
     public ICommand ExitCommand { get; }
@@ -154,14 +150,17 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
     private readonly ITaskbarRuntimeController _runtime;
     private readonly IControlCenterUi _ui;
     private bool _hideNativeTaskbar;
+    private bool _startWithWindows;
 
-    public GeneralPageViewModel(ISettingsService settings, ITaskbarRuntimeController runtime, IControlCenterUi ui)
+    public GeneralPageViewModel(ISettingsService settings, ITaskbarRuntimeController runtime, IStartupRegistration startup, IControlCenterUi ui)
         : base("General", "\uE713", "Turn SuperBar on or off and control how it replaces the Windows taskbar.")
     {
         _settings = settings;
         _runtime = runtime;
         _ui = ui;
         _hideNativeTaskbar = settings.Current.Behavior.HideNativeTaskbar;
+        _startWithWindows = settings.Current.Behavior.StartWithWindows;
+        CanStartWithWindows = startup.IsAvailable;
         runtime.StateChanged += OnRuntimeStateChanged;
         ResetCommand = new RelayCommand(ConfirmAndReset);
     }
@@ -201,6 +200,29 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
         }
     }
 
+    /// <summary>
+    /// Start SuperBar when the user signs in. Only the setting changes here; the app keeps Windows' start-up
+    /// registration in line with it.
+    /// </summary>
+    public bool StartWithWindows
+    {
+        get => _startWithWindows;
+        set
+        {
+            if (SetProperty(ref _startWithWindows, value))
+            {
+                _settings.Update(s => s.Behavior.StartWithWindows = value);
+            }
+        }
+    }
+
+    /// <summary>False in a development build, which never registers itself with Windows.</summary>
+    public bool CanStartWithWindows { get; }
+
+    public string StartWithWindowsHint => CanStartWithWindows
+        ? "Starts SuperBar when you sign in to Windows."
+        : "Available in the installed app. A development build does not register itself with Windows.";
+
     /// <summary>Asks first, then puts every setting back to its default.</summary>
     public ICommand ResetCommand { get; }
 
@@ -230,14 +252,20 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
         }
     }
 
-    /// <summary>Re-reads the cached setting without writing it back (the property setter would call Update).</summary>
+    /// <summary>Re-reads the cached settings without writing them back (the property setters would call Update).</summary>
     private void SyncFromSettings()
     {
-        var hide = _settings.Current.Behavior.HideNativeTaskbar;
-        if (hide != _hideNativeTaskbar)
+        var behavior = _settings.Current.Behavior;
+        if (behavior.HideNativeTaskbar != _hideNativeTaskbar)
         {
-            _hideNativeTaskbar = hide;
+            _hideNativeTaskbar = behavior.HideNativeTaskbar;
             OnPropertyChanged(nameof(HideNativeTaskbar));
+        }
+
+        if (behavior.StartWithWindows != _startWithWindows)
+        {
+            _startWithWindows = behavior.StartWithWindows;
+            OnPropertyChanged(nameof(StartWithWindows));
         }
     }
 
@@ -979,15 +1007,18 @@ public sealed class PinnedAppItemViewModel
     public ICommand UnpinCommand { get; }
 }
 
-public sealed class AboutPageViewModel : PageViewModel
+public sealed class AboutPageViewModel : PageViewModel, IDisposable
 {
     private const string CopyGlyphIdle = "\uE8C8";
     private const string CopyGlyphDone = "\uE73E";
 
     private readonly ISettingsService _settings;
     private readonly INativeTaskbarController _nativeTaskbar;
+    private readonly IUpdateService _updates;
     private readonly IControlCenterUi _ui;
+    private readonly IUiDispatcher _dispatcher;
     private readonly Debouncer _copiedReset;
+    private UpdateState _update;
     private bool _isCopied;
     private string _restoreStatus = "";
 
@@ -996,13 +1027,22 @@ public sealed class AboutPageViewModel : PageViewModel
         IAppLauncher launcher,
         ISettingsService settings,
         INativeTaskbarController nativeTaskbar,
+        IUpdateService updates,
         IControlCenterUi ui,
         IUiDispatcher dispatcher)
-        : base("About", "\uE946", "Version, data locations and diagnostics.")
+        : base("About", "\uE946", "Version, updates, data locations and diagnostics.")
     {
         _settings = settings;
         _nativeTaskbar = nativeTaskbar;
+        _updates = updates;
         _ui = ui;
+        _dispatcher = dispatcher;
+        _update = updates.State;
+        updates.StateChanged += OnUpdateStateChanged;
+        Version = updates.CurrentVersion;
+        CheckForUpdatesCommand = new RelayCommand(CheckForUpdates);
+        DownloadUpdateCommand = new RelayCommand(DownloadUpdate);
+        RestartToUpdateCommand = new RelayCommand(updates.ApplyUpdateAndRestart);
         _copiedReset = new Debouncer(dispatcher, TimeSpan.FromMilliseconds(1500));
         DataDirectory = paths.DataDirectory;
         LogDirectory = paths.LogDirectory;
@@ -1015,7 +1055,8 @@ public sealed class AboutPageViewModel : PageViewModel
     /// <summary>The app icon of the hero card, decoded for the 56 px <c>HeroIcon</c> style; null if the file is missing.</summary>
     public ImageSource? AppIcon { get; } = AppAssets.LoadImage(56);
 
-    public string Version { get; } = AppInfo.Version;
+    /// <summary>The running version, e.g. "0.1.0".</summary>
+    public string Version { get; }
     public string VersionPill => "v" + Version;
     public string Tagline => "A modern replacement for the Windows taskbar. Foundation milestone.";
     public string DataDirectory { get; }
@@ -1063,6 +1104,73 @@ public sealed class AboutPageViewModel : PageViewModel
     }
 
     public bool HasRestoreStatus => _restoreStatus.Length > 0;
+
+    // ----- Updates -----
+
+    public ICommand CheckForUpdatesCommand { get; }
+
+    public ICommand DownloadUpdateCommand { get; }
+
+    /// <summary>Closes SuperBar (the Windows taskbar comes back), installs the downloaded update and starts the new version.</summary>
+    public ICommand RestartToUpdateCommand { get; }
+
+    /// <summary>One line: where the updater stands.</summary>
+    public string UpdateStatus => _update.Phase switch
+    {
+        UpdatePhase.NotInstalled => "Development build \u2014 auto-updates require the installed app.",
+        UpdatePhase.Checking => "Checking for updates\u2026",
+        UpdatePhase.UpToDate => $"Up to date. v{Version} is the latest version.",
+        UpdatePhase.UpdateAvailable => $"Update v{_update.AvailableVersion} available. You have v{Version}.",
+        UpdatePhase.Downloading => $"Downloading v{_update.AvailableVersion}\u2026 {_update.DownloadProgress}%",
+        UpdatePhase.ReadyToRestart => $"Ready to restart. v{_update.AvailableVersion} is installed when SuperBar restarts; the Windows taskbar shows for a moment.",
+        UpdatePhase.Failed when _update.AvailableVersion is null => $"Could not check for updates. {_update.Error}",
+        UpdatePhase.Failed => $"Could not update to v{_update.AvailableVersion}. {_update.Error}",
+        _ => $"v{Version} is installed.",
+    };
+
+    public bool CanCheckForUpdates => _update.Phase is UpdatePhase.Idle or UpdatePhase.UpToDate or UpdatePhase.UpdateAvailable or UpdatePhase.Failed;
+
+    /// <summary>A newer version is known and not downloaded yet (also after a failed download: the button retries).</summary>
+    public bool IsDownloadAvailable => _update is { Phase: UpdatePhase.UpdateAvailable } or { Phase: UpdatePhase.Failed, AvailableVersion: not null };
+
+    public bool IsRestartReady => _update.Phase == UpdatePhase.ReadyToRestart;
+
+    public bool IsCheckingForUpdates => _update.Phase == UpdatePhase.Checking;
+
+    /// <summary>Checking or downloading: the progress bar shows.</summary>
+    public bool IsUpdateBusy => _update.Phase is UpdatePhase.Checking or UpdatePhase.Downloading;
+
+    /// <summary>0 to 100 while downloading.</summary>
+    public double DownloadProgress => _update.DownloadProgress;
+
+    /// <summary>Opening the page asks the update feed once per session; after that the button does.</summary>
+    public override void OnNavigatedTo()
+    {
+        if (_update.Phase == UpdatePhase.Idle)
+        {
+            CheckForUpdates();
+        }
+    }
+
+    // The update service never throws from these and reports through StateChanged.
+    private async void CheckForUpdates() => await _updates.CheckForUpdatesAsync();
+
+    private async void DownloadUpdate() => await _updates.DownloadUpdatesAsync();
+
+    // Raised on any thread (download progress comes from the thread pool).
+    private void OnUpdateStateChanged(object? sender, EventArgs e) => _dispatcher.Invoke(() =>
+    {
+        _update = _updates.State;
+        OnPropertyChanged(nameof(UpdateStatus));
+        OnPropertyChanged(nameof(CanCheckForUpdates));
+        OnPropertyChanged(nameof(IsDownloadAvailable));
+        OnPropertyChanged(nameof(IsRestartReady));
+        OnPropertyChanged(nameof(IsCheckingForUpdates));
+        OnPropertyChanged(nameof(IsUpdateBusy));
+        OnPropertyChanged(nameof(DownloadProgress));
+    });
+
+    public void Dispose() => _updates.StateChanged -= OnUpdateStateChanged;
 
     private void CopyRestore()
     {

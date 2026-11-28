@@ -24,8 +24,12 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        // Must run first: handles Velopack install/update/uninstall hooks and exits when appropriate.
-        VelopackApp.Build().Run();
+        // Must run first: handles Velopack install/update/uninstall hooks and exits when appropriate. It also applies
+        // an update that was downloaded but not installed yet (the native taskbar is still untouched at this point).
+        VelopackApp.Build()
+            .OnBeforeUpdateFastCallback(_ => InstallerHooks.BeforeUpdate())
+            .OnBeforeUninstallFastCallback(_ => InstallerHooks.BeforeUninstall())
+            .Run();
 
         var paths = new AppPaths();
         Log.Logger = LoggingConfiguration.CreateLogger(paths.LogDirectory, verbose: args.Contains("--verbose"));

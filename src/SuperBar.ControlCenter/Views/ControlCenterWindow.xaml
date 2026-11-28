@@ -61,16 +61,11 @@
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel>
-                  <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpacingS}">
-                    <TextBlock Style="{StaticResource Label}" Text="Start with Windows" />
-                    <Border Style="{StaticResource PillCaution}">
-                      <TextBlock Style="{StaticResource PillCautionText}" Text="Coming soon" />
-                    </Border>
-                  </StackPanel>
-                  <TextBlock Style="{StaticResource Hint}" Text="Planned together with the installer." />
+                  <TextBlock Style="{StaticResource Label}" Text="Start with Windows" />
+                  <TextBlock Style="{StaticResource Hint}" Text="{x:Bind StartWithWindowsHint}" />
                 </StackPanel>
-                <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsEnabled="False"
-                              AutomationProperties.Name="Start with Windows" />
+                <ToggleSwitch Grid.Column="1" Style="{StaticResource CardToggle}" IsOn="{x:Bind StartWithWindows, Mode=TwoWay}"
+                              IsEnabled="{x:Bind CanStartWithWindows}" AutomationProperties.Name="Start with Windows" />
               </Grid>
             </Border>
 
@@ -738,6 +733,27 @@
                   <TextBlock Style="{StaticResource Hint}" Text="{x:Bind Tagline}" />
                 </StackPanel>
               </Grid>
+            </Border>
+
+            <!-- Updates: where the updater stands, and the one action that moves it on. -->
+            <Border Style="{StaticResource Card}">
+              <StackPanel Spacing="{StaticResource SpacingXS}">
+                <TextBlock Style="{StaticResource Label}" Text="Updates" />
+                <TextBlock Style="{StaticResource Hint}" Text="{x:Bind UpdateStatus, Mode=OneWay}"
+                           AutomationProperties.LiveSetting="Polite" />
+                <!-- Indeterminate while checking, a percentage while downloading. -->
+                <ProgressBar Margin="0,6,0,0" Maximum="100" Value="{x:Bind DownloadProgress, Mode=OneWay}"
+                             IsIndeterminate="{x:Bind IsCheckingForUpdates, Mode=OneWay}"
+                             Visibility="{x:Bind IsUpdateBusy, Mode=OneWay}" AutomationProperties.Name="Update progress" />
+                <views:WrapPanel Margin="0,8,0,0" HorizontalSpacing="{StaticResource SpacingS}" VerticalSpacing="{StaticResource SpacingS}">
+                  <Button Style="{StaticResource AccentButtonStyle}" Content="Download update"
+                          Command="{x:Bind DownloadUpdateCommand}" Visibility="{x:Bind IsDownloadAvailable, Mode=OneWay}" />
+                  <Button Style="{StaticResource AccentButtonStyle}" Content="Restart to update"
+                          Command="{x:Bind RestartToUpdateCommand}" Visibility="{x:Bind IsRestartReady, Mode=OneWay}" />
+                  <Button Content="Check for updates" Command="{x:Bind CheckForUpdatesCommand}"
+                          IsEnabled="{x:Bind CanCheckForUpdates, Mode=OneWay}" />
+                </views:WrapPanel>
+              </StackPanel>
             </Border>
 
             <Border Style="{StaticResource Card}">

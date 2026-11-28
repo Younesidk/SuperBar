@@ -2,12 +2,23 @@ using SuperBar.Core.Runtime;
 
 namespace SuperBar.Infrastructure;
 
-/// <summary>All SuperBar data lives under %LOCALAPPDATA%\SuperBar (per user, never roaming, never in the install folder).</summary>
+/// <summary>
+/// All SuperBar data lives under %LOCALAPPDATA%\SuperBarData (per user, never roaming, never in the install folder).
+/// It is not %LOCALAPPDATA%\SuperBar: that is where the installer puts the application, and it replaces that folder
+/// on install and repair and removes it on uninstall.
+/// </summary>
 public sealed class AppPaths : IAppPaths
 {
     public AppPaths(string? dataDirectory = null)
     {
-        DataDirectory = dataDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SuperBar");
+        if (dataDirectory is null)
+        {
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            dataDirectory = Path.Combine(localAppData, "SuperBarData");
+            LegacyDataMigration.TryMove(Path.Combine(localAppData, "SuperBar"), dataDirectory);
+        }
+
+        DataDirectory = dataDirectory;
         Directory.CreateDirectory(DataDirectory);
         Directory.CreateDirectory(LogDirectory);
     }
