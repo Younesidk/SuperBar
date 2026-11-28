@@ -23,6 +23,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<ISettingsStore>(_ => new SqliteSettingsStore(paths.DatabasePath));
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<ITaskbarRecoveryStore>(_ => new JsonTaskbarRecoveryStore(paths.RecoveryFilePath));
+        services.AddSingleton<IBadgeStore>(_ => new JsonBadgeStore(paths.BadgesFilePath));
         return services;
     }
 }

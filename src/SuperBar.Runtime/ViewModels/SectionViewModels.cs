@@ -1,9 +1,9 @@
-using System.Globalization;
 using System.Windows.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using SuperBar.Core.Mvvm;
-using SuperBar.Core.Runtime;
 using SuperBar.Core.Shell;
+using SuperBar.Runtime.Theming;
 using SuperBar.Runtime.Widgets;
 using SuperBar.Widgets;
 
@@ -27,22 +27,41 @@ public abstract class SectionViewModel(string id) : ObservableObject
 
 public sealed class StartSectionViewModel(string id, IShellCommands shell) : SectionViewModel(id)
 {
-    public ICommand OpenStartCommand { get; } = new RelayCommand(shell.OpenStartMenu);
+    public ICommand ToggleStartCommand { get; } = new RelayCommand(shell.ToggleStartMenu);
 }
 
-public sealed class WidgetSectionViewModel(string id, WidgetHost host, WidgetViewResolver views) : SectionViewModel(id)
+/// <summary>
+/// The taskbar slot of one hosted widget. It follows its <see cref="WidgetHost"/>: whenever the host's state
+/// changes what the slot shows (first view, fault placeholder, restarted widget), the previous view is released
+/// and <see cref="View"/> is re-evaluated.
+/// </summary>
+public sealed class WidgetSectionViewModel : SectionViewModel, IDisposable
 {
-    private double _width = host.Width;
+    private readonly WidgetViewResolver _views;
+    private readonly TaskbarTheme _theme;
+    private double _width;
     private object? _source;
     private UIElement? _view;
+    private ICollapsibleWidgetModel? _collapsible;
+    private bool _disposed;
 
-    public WidgetHost Host { get; } = host;
+    public WidgetSectionViewModel(string id, WidgetHost host, WidgetViewResolver views, TaskbarTheme theme)
+        : base(id)
+    {
+        Host = host;
+        _views = views;
+        _theme = theme;
+        _width = SlotWidth();
+        host.StateChanged += OnHostStateChanged;
+    }
+
+    public WidgetHost Host { get; }
 
     public string DisplayName => Host.Descriptor.DisplayName;
 
     /// <summary>
     /// The widget's UI element, created on first use. Follows the host: when the widget faults, the
-    /// error placeholder replaces it.
+    /// error placeholder replaces it; when it restarts, a fresh view does.
     /// </summary>
     public UIElement View
     {
@@ -51,108 +70,123 @@ public sealed class WidgetSectionViewModel(string id, WidgetHost host, WidgetVie
             var source = Host.View;
             if (_view is null || !ReferenceEquals(source, _source))
             {
+                ReleaseView();
                 _source = source;
-                _view = views.Resolve(source);
+                _view = _views.Resolve(source);
+                Track(source as ICollapsibleWidgetModel);
             }
 
             return _view;
         }
     }
 
+    /// <summary>The widget's model collapsed its slot (see <see cref="ICollapsibleWidgetModel"/>); the bar then gives it no room at all.</summary>
+    public bool IsCollapsed => _collapsible?.IsCollapsed ?? false;
+
+    /// <summary>The element currently shown in the slot (what a flyout is anchored to), or null before the first render.</summary>
+    public FrameworkElement? CurrentElement => _view as FrameworkElement;
+
+    /// <summary>The slot width in DIPs, or NaN when the widget sizes itself to its content.</summary>
     public double Width
     {
         get => _width;
         private set => SetProperty(ref _width, value);
     }
 
-    public void RefreshWidth() => Width = Host.Width;
+    public double MinWidth => IsAutoSized ? Host.Descriptor.MinWidth : 0;
 
-    public override void Activate()
+    public double MaxWidth => IsAutoSized ? Host.Descriptor.MaxWidth : double.PositiveInfinity;
+
+    /// <summary>The shared widget card, or nothing for widgets that draw their own chrome.</summary>
+    public Brush Background => Host.Descriptor.ShowBackground ? _theme.WidgetBackground : _theme.Transparent;
+
+    private bool IsAutoSized => Host.Descriptor.Sizing == WidgetSizing.Auto;
+
+    public void RefreshWidth() => Width = SlotWidth();
+
+    public override void Activate() => Host.Activate();
+
+    public override void Deactivate() => Host.Deactivate();
+
+    public void Dispose()
     {
-        Host.Activate();
-        RefreshView();
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        Host.StateChanged -= OnHostStateChanged;
+        Host.Dispose();
+        ReleaseView();
+        Track(null);
     }
 
-    public override void Deactivate()
+    private void Track(ICollapsibleWidgetModel? model)
     {
-        Host.Deactivate();
-        RefreshView();
+        if (ReferenceEquals(model, _collapsible))
+        {
+            return;
+        }
+
+        var was = IsCollapsed;
+        if (_collapsible is not null)
+        {
+            _collapsible.PropertyChanged -= OnModelChanged;
+        }
+
+        _collapsible = model;
+        if (model is not null)
+        {
+            model.PropertyChanged += OnModelChanged;
+        }
+
+        if (was != IsCollapsed)
+        {
+            OnPropertyChanged(nameof(IsCollapsed));
+        }
     }
 
-    private void RefreshView()
+    private void OnModelChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (_source is not null && !ReferenceEquals(Host.View, _source))
+        if (e.PropertyName is nameof(ICollapsibleWidgetModel.IsCollapsed) or null or "")
+        {
+            OnPropertyChanged(nameof(IsCollapsed));
+        }
+    }
+
+    private double SlotWidth() => IsAutoSized ? double.NaN : Host.Width;
+
+    private void OnHostStateChanged(object? sender, EventArgs e)
+    {
+        // Only once a view has been handed out: before that the slot's first binding picks up the current one.
+        if (!_disposed && _source is not null && !ReferenceEquals(Host.View, _source))
         {
             OnPropertyChanged(nameof(View));
         }
+    }
+
+    private void ReleaseView()
+    {
+        // A view created for a model is ours to dispose; a UI element supplied by the widget itself is not.
+        if (_view is IDisposable disposable && !ReferenceEquals(_view, _source))
+        {
+            disposable.Dispose();
+        }
+
+        _view = null;
+        _source = null;
     }
 }
 
 /// <summary>
 /// System section. Real notification-area (tray icon) hosting requires SuperBar to own the shell's
-/// Shell_TrayWnd notification protocol and is NOT implemented in this milestone; the overflow button is a placeholder.
-/// The quick-settings button opens the real Windows Quick Settings flyout.
+/// Shell_TrayWnd notification protocol and is NOT implemented in this milestone; until then the overflow button
+/// opens Explorer's own "hidden icons" flyout. The quick-settings button opens the real Windows Quick Settings flyout.
 /// </summary>
 public sealed class SystemTraySectionViewModel(string id, IShellCommands shell) : SectionViewModel(id)
 {
-    public ICommand OpenQuickSettingsCommand { get; } = new RelayCommand(shell.OpenQuickSettings);
+    public ICommand ToggleQuickSettingsCommand { get; } = new RelayCommand(shell.ToggleQuickSettings);
 
-    public string OverflowToolTip => "Notification area icons are not integrated yet (planned milestone)";
-}
-
-public sealed class ClockSectionViewModel : SectionViewModel, IDisposable
-{
-    private readonly IUiTimer _timer;
-    private string _time = "";
-    private string _date = "";
-    private string _toolTip = "";
-
-    public ClockSectionViewModel(string id, IShellCommands shell, IUiDispatcher dispatcher) : base(id)
-    {
-        OpenNotificationCenterCommand = new RelayCommand(shell.OpenNotificationCenter);
-        _timer = dispatcher.CreateTimer(TimeSpan.FromMinutes(1), Update);
-        Update();
-    }
-
-    public ICommand OpenNotificationCenterCommand { get; }
-
-    public string Time
-    {
-        get => _time;
-        private set => SetProperty(ref _time, value);
-    }
-
-    public string Date
-    {
-        get => _date;
-        private set => SetProperty(ref _date, value);
-    }
-
-    public string ToolTip
-    {
-        get => _toolTip;
-        private set => SetProperty(ref _toolTip, value);
-    }
-
-    public override void Activate()
-    {
-        Update();
-        _timer.Start();
-    }
-
-    public override void Deactivate() => _timer.Stop();
-
-    private void Update()
-    {
-        var now = DateTime.Now;
-        var culture = CultureInfo.CurrentCulture;
-        Time = now.ToString(culture.DateTimeFormat.ShortTimePattern, culture);
-        Date = now.ToString(culture.DateTimeFormat.ShortDatePattern, culture);
-        ToolTip = now.ToString("D", culture);
-
-        // Wake exactly once per minute, aligned to the minute boundary.
-        _timer.Interval = TimeSpan.FromSeconds(60 - now.Second) - TimeSpan.FromMilliseconds(now.Millisecond) + TimeSpan.FromMilliseconds(50);
-    }
-
-    public void Dispose() => _timer.Dispose();
+    public ICommand ToggleOverflowCommand { get; } = new RelayCommand(shell.ToggleTrayOverflow);
 }

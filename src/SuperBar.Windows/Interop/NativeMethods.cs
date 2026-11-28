@@ -163,6 +163,24 @@ internal struct MEMORYSTATUSEX
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct SIZE
+{
+    public int cx;
+    public int cy;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct DWM_THUMBNAIL_PROPERTIES
+{
+    public uint dwFlags;
+    public RECT rcDestination;
+    public RECT rcSource;
+    public byte opacity;
+    [MarshalAs(UnmanagedType.Bool)] public bool fVisible;
+    [MarshalAs(UnmanagedType.Bool)] public bool fSourceClientAreaOnly;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct POINT
 {
     public int X;
@@ -220,6 +238,9 @@ internal static class NativeMethods
 
     // --- Window messages ---------------------------------------------------------------------
     public const uint WM_ACTIVATE = 0x0006;
+    public const uint WM_SYSCOMMAND = 0x0112;
+    public const nint SC_CLOSE = 0xF060;
+    public const int WA_INACTIVE = 0;
     public const uint WM_WINDOWPOSCHANGED = 0x0047;
     public const uint WM_DISPLAYCHANGE = 0x007E;
     public const uint WM_NCDESTROY = 0x0082;
@@ -248,6 +269,8 @@ internal static class NativeMethods
     public const long WS_EX_TOOLWINDOW = 0x00000080;
     public const long WS_EX_APPWINDOW = 0x00040000;
     public const long WS_EX_NOACTIVATE = 0x08000000;
+    public const long WS_EX_LAYERED = 0x00080000;
+    public const uint LWA_ALPHA = 0x2;
     public const uint WS_POPUP = 0x80000000;
     public const long WS_CAPTION = 0x00C00000;
     public const long WS_THICKFRAME = 0x00040000;
@@ -279,6 +302,11 @@ internal static class NativeMethods
     public const int ICON_SMALL = 0;
     public const int ICON_BIG = 1;
     public const int ICON_SMALL2 = 2;
+    public const uint WM_SETICON = 0x0080;
+    public const uint IMAGE_ICON = 1;
+    public const uint LR_LOADFROMFILE = 0x0010;
+    public const int SM_CXICON = 11;
+    public const int SM_CXSMICON = 49;
     public const int GCLP_HICON = -14;
     public const int GCLP_HICONSM = -34;
     public const uint SMTO_ABORTIFHUNG = 0x0002;
@@ -290,13 +318,21 @@ internal static class NativeMethods
     public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     public const int DWMWA_BORDER_COLOR = 34;
     public const int DWMWCP_DONOTROUND = 1;
+    public const int DWMWCP_ROUND = 2;
+    public const uint DWM_TNP_RECTDESTINATION = 0x01;
+    public const uint DWM_TNP_OPACITY = 0x04;
+    public const uint DWM_TNP_VISIBLE = 0x08;
+    public const uint DWM_TNP_SOURCECLIENTAREAONLY = 0x10;
     public const uint DWMWA_COLOR_NONE = 0xFFFFFFFE;
     public const uint MONITORINFOF_PRIMARY = 1;
     public const uint MONITOR_DEFAULTTOPRIMARY = 1;
+    public const uint MONITOR_DEFAULTTONEAREST = 2;
     public const int MDT_EFFECTIVE_DPI = 0;
     public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    public const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
     public const uint EVENT_OBJECT_SHOW = 0x8002;
     public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+    public const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
     public const uint MSGFLT_ALLOW = 1;
 
     public const uint INPUT_KEYBOARD = 1;
@@ -384,6 +420,17 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern nint MonitorFromWindow(nint hwnd, uint dwFlags);
 
+    [DllImport("user32.dll")]
+    public static extern nint MonitorFromPoint(POINT pt, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetCursorPos(out POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetWindowRect(nint hWnd, out RECT lpRect);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetMonitorInfo(nint hMonitor, ref MONITORINFOEX lpmi);
@@ -399,6 +446,15 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool DestroyIcon(nint hIcon);
+
+    [DllImport("user32.dll", EntryPoint = "LoadImageW", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern nint LoadImage(nint hInst, string name, uint type, int cx, int cy, uint fuLoad);
+
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetricsForDpi(int nIndex, uint dpi);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageW")]
+    public static extern nint SendMessage(nint hWnd, uint msg, nint wParam, nint lParam);
 
     [DllImport("user32.dll")]
     public static extern nint GetDC(nint hWnd);
@@ -434,6 +490,23 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool PostMessage(nint hWnd, uint msg, nint wParam, nint lParam);
 
+    public const uint WM_USER = 0x0400;
+
+    // Undocumented: the shell's task-switching window (Explorer's task band, MSTaskSwWClass).
+    [DllImport("user32.dll")]
+    public static extern nint GetTaskmanWindow();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetProp(nint hWnd, string lpString, nint hData);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern nint GetProp(nint hWnd, string lpString);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SendNotifyMessage(nint hWnd, uint msg, nint wParam, nint lParam);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool ChangeWindowMessageFilterEx(nint hwnd, uint message, uint action, nint pChangeFilterStruct);
@@ -453,6 +526,18 @@ internal static class NativeMethods
     public static extern int GetDpiForMonitor(nint hmonitor, int dpiType, out uint dpiX, out uint dpiY);
 
     [DllImport("dwmapi.dll")]
+    public static extern int DwmRegisterThumbnail(nint hwndDestination, nint hwndSource, out nint phThumbnailId);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmUnregisterThumbnail(nint hThumbnailId);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmUpdateThumbnailProperties(nint hThumbnailId, ref DWM_THUMBNAIL_PROPERTIES ptnProperties);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmQueryThumbnailSourceSize(nint hThumbnail, out SIZE pSize);
+
+    [DllImport("dwmapi.dll")]
     public static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
 
     [DllImport("dwmapi.dll")]
@@ -466,6 +551,10 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern uint GetDpiForWindow(nint hwnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetLayeredWindowAttributes(nint hwnd, uint crKey, byte bAlpha, uint dwFlags);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern nint OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, uint dwProcessId);

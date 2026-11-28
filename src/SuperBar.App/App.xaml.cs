@@ -9,6 +9,7 @@ using SuperBar.Infrastructure;
 using SuperBar.Runtime;
 using SuperBar.Widgets;
 using SuperBar.Windows;
+using SuperBar.Windows.Startup;
 
 namespace SuperBar.App;
 
@@ -66,6 +67,11 @@ public sealed partial class App : Application, IAppLifetime
                 .AddSuperBarWidgets()
                 .AddSuperBarRuntime()
                 .AddSuperBarControlCenter()
+                .AddSingleton<IUpdateService, VelopackUpdateService>()
+                // Only an installed SuperBar has a stable path to register; a development build registers nothing.
+                .AddSingleton<IStartupRegistration>(sp => new RunKeyStartupRegistration(
+                    sp.GetRequiredService<IUpdateService>().IsInstalled ? Environment.ProcessPath : null))
+                .AddSingleton<StartWithWindowsSync>()
                 .BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
 
             _log = _services.GetRequiredService<ILogger<App>>();
@@ -74,6 +80,8 @@ public sealed partial class App : Application, IAppLifetime
             _services.GetRequiredService<INativeTaskbarController>().RecoverFromPreviousSession();
 
             _services.GetRequiredService<ITaskbarRuntimeController>().Enable();
+
+            _services.GetRequiredService<StartWithWindowsSync>().Start();
 
             if (s_args.Contains("--control-center"))
             {

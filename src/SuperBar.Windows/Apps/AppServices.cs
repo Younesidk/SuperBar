@@ -74,43 +74,15 @@ internal sealed class WindowSwitcher(ILogger<WindowSwitcher> logger) : IWindowSw
             logger.LogDebug("SetForegroundWindow refused for 0x{Handle:X}", windowHandle);
         }
     }
-}
 
-/// <summary>Opens built-in shell surfaces by sending their system shortcuts (they are owned by Explorer / ShellExperienceHost).</summary>
-internal sealed class ShellCommands(ILogger<ShellCommands> logger) : IShellCommands
-{
-    private const ushort VK_N = 0x4E;
-    private const ushort VK_A = 0x41;
-
-    public void OpenStartMenu() => SendChord(VK_LWIN);
-
-    public void OpenNotificationCenter() => SendChord(VK_LWIN, VK_N);
-
-    public void OpenQuickSettings() => SendChord(VK_LWIN, VK_A);
-
-    public void OpenTaskManager() => SendChord(VK_CONTROL, VK_SHIFT, VK_ESCAPE);
-
-    private void SendChord(params ushort[] keys)
+    public void Close(nint windowHandle)
     {
-        var inputs = new INPUT[keys.Length * 2];
-        for (var i = 0; i < keys.Length; i++)
+        // SC_CLOSE rather than WM_CLOSE: it is what the system menu and the Windows taskbar send.
+        if (IsWindow(windowHandle) && !PostMessage(windowHandle, WM_SYSCOMMAND, SC_CLOSE, 0))
         {
-            inputs[i] = Key(keys[i], up: false);
-            inputs[inputs.Length - 1 - i] = Key(keys[i], up: true);
-        }
-
-        var sent = SendInput((uint)inputs.Length, inputs, System.Runtime.InteropServices.Marshal.SizeOf<INPUT>());
-        if (sent != inputs.Length)
-        {
-            logger.LogWarning("SendInput sent {Sent}/{Total} events", sent, inputs.Length);
+            logger.LogDebug("Could not ask window 0x{Handle:X} to close", windowHandle);
         }
     }
-
-    private static INPUT Key(ushort vk, bool up) => new()
-    {
-        type = INPUT_KEYBOARD,
-        u = new InputUnion { ki = new KEYBDINPUT { wVk = vk, dwFlags = up ? KEYEVENTF_KEYUP : 0 } },
-    };
 }
 
 internal sealed class SystemMetricsProvider : ISystemMetricsProvider

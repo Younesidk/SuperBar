@@ -26,7 +26,24 @@ and it can be shipped with Velopack. The WinUI projects build per architecture (
 
 Right-click an empty part of the bar to open the Control Center or exit. Exiting always restores the Windows taskbar.
 
-Data lives in `%LOCALAPPDATA%\SuperBar\`: `settings.db` (SQLite), `taskbar-recovery.json` and `logs\`.
+Data lives in `%LOCALAPPDATA%\SuperBarData\`: `settings.db` (SQLite), `taskbar-recovery.json` and `logs\`. It is deliberately not `%LOCALAPPDATA%\SuperBar\`: that is the install folder, which the installer replaces on install and repair and removes on uninstall. Data left there by a build older than 0.1.0 is moved over on the first start.
+
+## Install, update, release
+
+SuperBar ships as a [Velopack](https://velopack.io) installer (`SuperBar-win-Setup.exe`, per user, no admin rights) published on GitHub Releases. The installed app lives in `%LOCALAPPDATA%\SuperBar\current\`; an update replaces the contents of `current`, so the path of `SuperBar.exe` never changes.
+
+- **Updates.** Control Center → About checks the repository's GitHub Releases, downloads the update (a delta when there is one) and restarts into it. `IUpdateService` (`VelopackUpdateService`) owns the state; a development build reports "not installed" and does nothing.
+- **The taskbar is always restored first.** "Restart to update" starts the updater and then exits SuperBar in order, which restores the Windows taskbar. Should SuperBar be killed instead (the uninstaller does that), the `InstallerHooks` that Velopack runs before an update and before an uninstall restore it from the recovery record. The uninstall hook also removes the "Start with Windows" entry.
+- **Start with Windows** (Control Center → General) is the value `SuperBar` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. `StartWithWindowsSync` keeps it in line with the setting, at start-up and on every change. Development builds never register themselves.
+
+To release, from a clean commit that is pushed to GitHub:
+
+```powershell
+.\scripts\release.ps1 -Version 0.1.0 -DryRun     # build + pack only: artifacts\releases\SuperBar-win-Setup.exe
+.\scripts\release.ps1 -Version 0.1.0             # also tags v0.1.0 and creates the GitHub release
+```
+
+The script publishes self-contained for win-x64, packs with `vpk` (a local dotnet tool pinned in `dotnet-tools.json` to the version of the Velopack package), and uploads the installer, the portable zip, the feed files (`releases.win.json`, `RELEASES`, `assets.win.json`) and that version's `.nupkg` packages. From the second release on it first downloads the previous one, so a delta package is built. `-Notes` / `-NotesFile` set the release notes; `-SkipGitTag` lets GitHub create the tag. The installer is not code-signed, so Windows SmartScreen warns on first run.
 
 ## Solution structure
 
@@ -46,9 +63,9 @@ Window-chrome tweaks WinUI cannot express (tool-window style, no DWM rounded cor
 showing without activation) go through `IWindowChrome` too; the only Win32 interop in the UI projects is getting
 the window handle (`WindowNative.GetWindowHandle`).
 
-Only `SuperBar.App`, `SuperBar.Runtime` and `SuperBar.ControlCenter` reference WinUI. Widgets expose either a UI
-element or a plain presentation model (the taskbar renders models with views registered by `AddWidgetView<TModel>`),
-and timers go through `IUiDispatcher`, so the widget system is tested without a UI thread.
+Only `SuperBar.App`, `SuperBar.Runtime` and `SuperBar.ControlCenter` reference WinUI. Widgets expose a plain
+presentation model (the taskbar renders it with the view marked `[WidgetViewFor(typeof(TModel))]`), and timers go
+through `IUiDispatcher`, so the widget system is tested without a UI thread.
 
 ## How the taskbar replacement works
 
@@ -92,16 +109,34 @@ A hidden listener window receives the `TaskbarCreated` broadcast when Explorer r
 
 ## Widgets
 
-A widget type is a `WidgetDescriptor`. It defines an id, a display name, default/min/max width, and a factory that returns an `IWidget` (a view plus `Activate`, `Deactivate`, `ApplyOptions` and `Dispose`).
-Instances are configured in settings (`WidgetInstanceSettings`: id, type, enabled, width, options) and placed by layout entries.
-`WidgetHost` handles:
-- lazy creation;
-- lifecycle (deactivated while the bar is hidden or a full-screen app runs);
-- width clamping;
-- fault isolation.
+A widget is two classes and no registration code:
 
-Widgets render **inside** the bar's layout. They never get their own window.
-To register a new widget type: `services.AddWidget(MyWidget.Descriptor)`. The example widget is `SystemResourcesWidget` (CPU and memory, sampled every 2 s while active).
+- **Logic** in `SuperBar.Widgets/BuiltIn/<Name>/`: a class marked `[Widget("superbar.<name>", "Display name", ...)]` that derives from `WidgetBase` (or `WidgetBase<TSettings, TModel>` for typed settings), plus its presentation model. It is created with constructor injection.
+- **View** in `SuperBar.Runtime/Widgets/<Name>/`: a `WidgetViewBase` marked `[WidgetViewFor(typeof(TModel))]`.
+
+Both are discovered by their attribute at start-up. Instances are configured in settings (`WidgetInstanceSettings`: id, type, enabled, width, options) and placed by layout entries.
+
+`WidgetHost` owns each instance and runs this lifecycle: create → load settings (silently) → `InitializeAsync` once → `Ready` ⇄ `Active`. A widget is active only while the bar is visible and no full-screen app runs.
+
+While active, a widget starts all of its work through the `IWidgetScope` it receives:
+
+| Member | Use |
+|---|---|
+| `Every`, `After` | Timers on the UI thread |
+| `Poll`, `Run` | Work on the thread pool with a timeout; only the result returns to the UI thread |
+| `Own` | Hooks and subscriptions to release |
+
+The scope ends on deactivation, so nothing has to be stopped by hand. Views talk back through `WidgetCommand`s on the model, which the widget wires with `On(Model.Command, handler)`.
+
+Settings and state:
+
+- **Settings** are a plain class, the `TSettings` of `WidgetBase<TSettings, TModel>`. Properties marked `[Setting("Label", ...)]` appear in the Control Center as a generated form (switch, slider or number box, drop-down, text box). Edits reach the running widget live through `OnSettingsChanged`, and the widget can change its own settings with `SaveSettings(s => ...)`. They are stored as typed JSON in the instance's `options`; values saved as strings by older versions are still read.
+- **Custom editor:** a WinUI view in SuperBar.ControlCenter marked `[WidgetSettingsViewFor(typeof(TSettings))]` replaces the generated form for that settings class.
+- **State** that is not a setting (a running countdown, a cached value) goes to `Context.State`. It is kept in its own row (`widget-state:{instanceId}`), so saving it never re-lays out the bar.
+
+Fault isolation: every call into a widget is guarded. A widget that throws (in a lifecycle method, a timer tick, a result handler or a command) is disposed and replaced by an error placeholder, then restarted after 30 s, 2 min and 10 min; after that a click on the placeholder restarts it. Failing or hanging background work is retried with back-off and does not fault the widget.
+
+Widgets render **inside** the bar's layout. They never get their own window. The built-in widgets are `ClockWidget`, `SystemResourcesWidget` (CPU and memory, sampled every 2 s while active) and `MediaWidget` ("Now Playing": the current Windows media session, with Play/Pause and Next).
 
 ## Settings
 
@@ -111,11 +146,11 @@ The recovery record is deliberately a plain JSON file, so it works even if the d
 
 ## Not implemented yet
 
-- **Notification-area (tray) icons.** Hosting other apps' tray icons requires implementing the shell's `Shell_TrayWnd` notification protocol. The overflow chevron is a placeholder.
+- **Notification-area (tray) icons.** Hosting other apps' tray icons requires implementing the shell's `Shell_TrayWnd` notification protocol. Until then the overflow chevron opens Explorer's own "hidden icons" flyout (via Win+B, then moved next to the bar), so icons shown directly on the native taskbar are not visible in SuperBar.
 - Window thumbnails/previews. Grouped windows currently cycle on click.
-- Pin and unpin from the UI. `.lnk` target resolution for matching shortcuts to running apps. Jump lists.
+- `.lnk` target resolution for matching shortcuts to running apps. Jump lists. (Pinning and unpinning work from the bar's right-click menu and from the Control Center's Applications page.)
 - Drag-and-drop reordering on the bar. The Control Center already supports reorder and zone changes.
 - Per-monitor bars, top-edge placement, auto-hide for SuperBar itself.
-- Start with Windows, Velopack packaging and update feed. The Velopack hook is already wired in `Main`.
+- Code signing of the installer, and an ARM64 release (the release script packs win-x64 only).
 - More widgets (calendar, weather, media, session statistics).
 - UWP/packaged apps are grouped by `ApplicationFrameHost` and may not group perfectly.

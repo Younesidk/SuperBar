@@ -26,6 +26,58 @@ public sealed class SettingsPersistenceTests : IDisposable
     }
 
     [Fact]
+    public void Settings_saved_before_the_clock_became_a_widget_still_load()
+    {
+        CreateService(); // creates the database
+        var store = new SqliteSettingsStore(DatabasePath);
+        store.Write("widgets", """[{"instanceId":"system-resources-1","typeId":"superbar.system-resources","enabled":true,"width":180,"options":{}}]""");
+        store.Write("layout", """
+            [
+              {"id":"start","kind":"Start","zone":"Left"},
+              {"id":"apps","kind":"Applications","zone":"Center"},
+              {"id":"clock","kind":"Clock","zone":"Left"},
+              {"id":"widget-resources","kind":"Widget","zone":"Right","widgetInstanceId":"system-resources-1"}
+            ]
+            """);
+
+        var loaded = CreateService().Current;
+
+        // The user's layout survived (it was not reset to the defaults) and the clock is a widget now.
+        Assert.Equal(["start", "apps", "clock", "widget-resources"], loaded.Layout.Select(p => p.Id));
+        Assert.Equal(TaskbarZone.Center, loaded.Layout[1].Zone);
+        var clock = loaded.Layout[2];
+        Assert.Equal(SectionKind.Widget, clock.Kind);
+        Assert.Equal(TaskbarZone.Left, clock.Zone);
+        Assert.Equal(DefaultSettings.ClockWidgetType, loaded.Widgets.Single(w => w.InstanceId == clock.WidgetInstanceId).TypeId);
+        Assert.Equal(180, loaded.Widgets.Single(w => w.TypeId == DefaultSettings.SystemResourcesWidgetType).Width);
+    }
+
+    [Fact]
+    public void Widget_options_saved_as_strings_by_schema_1_still_load()
+    {
+        CreateService();
+        var store = new SqliteSettingsStore(DatabasePath);
+        store.Write("widgets", """[{"instanceId":"clock-1","typeId":"superbar.clock","enabled":true,"options":{"showSeconds":"true","TimeFormat":"TwentyFourHour"}}]""");
+
+        var loaded = CreateService().Current.Widgets.Single(w => w.InstanceId == "clock-1");
+        var typed = SuperBar.Widgets.WidgetSettingsBinder.Bind<SuperBar.Widgets.BuiltIn.ClockSettings>(loaded.Options);
+
+        Assert.True(typed.ShowSeconds);
+        Assert.Equal(SuperBar.Widgets.BuiltIn.ClockTimeFormat.TwentyFourHour, typed.TimeFormat);
+        Assert.True(typed.ShowDate); // missing: default
+    }
+
+    [Fact]
+    public void Widget_options_are_saved_as_typed_json()
+    {
+        CreateService().Update(s => s.Widgets[0].Options["showSeconds"] = true);
+
+        var row = new SqliteSettingsStore(DatabasePath).Read("widgets")!;
+
+        Assert.Contains("\"showSeconds\":true", row);
+    }
+
+    [Fact]
     public void Updates_persist_across_instances()
     {
         CreateService().Update(s =>

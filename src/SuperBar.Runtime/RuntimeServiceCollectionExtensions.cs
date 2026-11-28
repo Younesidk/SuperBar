@@ -3,7 +3,6 @@ using SuperBar.Core.Runtime;
 using SuperBar.Runtime.Services;
 using SuperBar.Runtime.Theming;
 using SuperBar.Runtime.Widgets;
-using SuperBar.Widgets.BuiltIn;
 
 namespace SuperBar.Runtime;
 
@@ -18,11 +17,13 @@ public static class RuntimeServiceCollectionExtensions
         services.AddSingleton<IconCache>();
         services.AddSingleton<TaskbarTheme>();
         services.AddSingleton<WidgetViewResolver>();
+        services.AddSingleton<WidgetFlyoutSurface>();
+        services.AddSingleton<SuperBar.Widgets.IWidgetFlyoutSurface>(sp => sp.GetRequiredService<WidgetFlyoutSurface>());
         services.AddSingleton<TaskbarRuntime>();
         services.AddSingleton<ITaskbarRuntimeController>(sp => sp.GetRequiredService<TaskbarRuntime>());
 
-        // Views for the built-in widgets' presentation models.
-        services.AddWidgetView<SystemResourcesModel>((sp, model) => new SystemResourcesView(model, sp.GetRequiredService<TaskbarTheme>()));
+        // Widget views are discovered by their [WidgetViewFor] attribute: a new widget needs no registration here.
+        services.AddWidgetViewsFrom(typeof(TaskbarRuntime).Assembly);
         return services;
     }
 }

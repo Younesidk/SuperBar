@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using SuperBar.Core.Layout;
 using SuperBar.Core.Runtime;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
@@ -9,6 +10,7 @@ using SuperBar.Runtime.ViewModels;
 using SuperBar.Runtime.Views;
 using SuperBar.Runtime.Widgets;
 using SuperBar.Widgets;
+using Microsoft.UI.Xaml;
 using Windows.Graphics;
 
 namespace SuperBar.Runtime;
@@ -32,6 +34,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
     private readonly IUiTimer _displayDebounce;
     private TaskbarViewModel? _viewModel;
     private TaskbarWindow? _window;
+    private WindowPreviewPopup? _preview;
     private IAppBarRegistration? _appBar;
     private bool _disposed;
 
@@ -84,13 +87,35 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         _logger.LogInformation("Enabling SuperBar");
 
         _tracker.Start();
-        _viewModel ??= CreateViewModel();
+        if (_viewModel is null)
+        {
+            _viewModel = CreateViewModel();
+            _viewModel.Apps.PinOrderChanged += keys =>
+                _settings.Update(s => s.PinnedApps = AppOrdering.ReorderPins(s.PinnedApps, keys));
+            _viewModel.Apps.PinRequested += (pin, index) => _settings.Update(s => AppOrdering.AddPin(s.PinnedApps, pin, index));
+            _viewModel.Apps.UnpinRequested += key => _settings.Update(s => AppOrdering.RemovePin(s.PinnedApps, key));
+            _viewModel.SectionOrderChanged += (zone, keys) => _settings.Update(s => SectionOrdering.ReorderZone(s.Layout, zone, keys));
+        }
+
         _viewModel.Apply(settings);
 
         var monitor = _monitors.GetPrimaryMonitor();
         var chrome = _services.GetRequiredService<IWindowChrome>();
-        _window = new TaskbarWindow(_viewModel, _services.GetRequiredService<TaskbarTheme>(), chrome, _services.GetRequiredService<ILogger<TaskbarWindow>>());
+        var theme = _services.GetRequiredService<TaskbarTheme>();
+        var windowLogger = _services.GetRequiredService<ILogger<TaskbarWindow>>();
+        _preview = new WindowPreviewPopup(
+            _services.GetRequiredService<IWindowThumbnailService>(),
+            _services.GetRequiredService<ICursorService>(),
+            chrome,
+            _services.GetRequiredService<IWindowSwitcher>(),
+            _tracker,
+            _monitors,
+            _dispatcher,
+            theme,
+            windowLogger);
+        _window = new TaskbarWindow(_viewModel, theme, chrome, _preview, windowLogger);
         _window.ApplyAppearance(settings.Appearance);
+        _window.WidgetDragStarted += (_, _) => _services.GetRequiredService<WidgetFlyoutCoordinator>().CloseAll();
 
         // Pre-place at the bottom edge (physical pixels) so there is no flash elsewhere; the AppBar takes over immediately.
         var height = (int)Math.Round(settings.Appearance.Height * monitor.Scale);
@@ -110,6 +135,12 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         _appBar = _appBars.Register(hwnd, CreateOptions(settings, monitor));
         _appBar.FullscreenAppChanged += OnFullscreenAppChanged;
 
+        var viewModel = _viewModel;
+        _services.GetRequiredService<WidgetFlyoutSurface>().Attach(
+            (FrameworkElement)_window.Content,
+            viewModel.FindWidgetElement,
+            ScreenEdge.Bottom);
+
         _viewModel.Activate();
         IsEnabled = true;
         StateChanged?.Invoke(this, EventArgs.Empty);
@@ -125,6 +156,8 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
 
         _logger.LogInformation("Disabling SuperBar");
         _viewModel?.Deactivate();
+        _services.GetRequiredService<WidgetFlyoutCoordinator>().CloseAll();
+        _services.GetRequiredService<WidgetFlyoutSurface>().Detach();
 
         if (_appBar is not null)
         {
@@ -134,6 +167,9 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         }
 
         _nativeTaskbar.Restore();
+
+        _preview?.Dispose();
+        _preview = null;
 
         if (_window is not null)
         {
@@ -161,7 +197,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         _services.GetRequiredService<IconCache>(),
         _services.GetRequiredService<IWidgetRegistry>(),
         _services.GetRequiredService<WidgetViewResolver>(),
-        _dispatcher,
+        _services.GetRequiredService<TaskbarTheme>(),
         _services,
         _services.GetRequiredService<ILoggerFactory>(),
         openControlCenter: () => _services.GetRequiredService<IControlCenterLauncher>().Show(),
@@ -230,6 +266,7 @@ public sealed class TaskbarRuntime : ITaskbarRuntimeController, IDisposable
         // Suspend widgets and timers while a game / video is full-screen.
         if (fullscreen)
         {
+            _preview?.Hide(animate: false);
             _viewModel?.Deactivate();
         }
         else

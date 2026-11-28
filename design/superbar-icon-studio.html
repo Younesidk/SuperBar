@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SuperBar Icon Studio</title>
+<style>
+  :root {
+    --bg: #131316;
+    --surface: #1b1c20;
+    --surface-2: #222328;
+    --line: rgba(255, 255, 255, .08);
+    --line-strong: rgba(255, 255, 255, .14);
+    --text: #f2f3f5;
+    --text-2: #a9adb8;
+    --text-3: #777c88;
+    --accent: #5b8cff;
+    --stage-dark: #202020;
+    --stage-light: #f3f3f3;
+    --radius: 14px;
+    --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  img, canvas { display: block; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 0 32px 96px; }
+
+  /* ── Top bar ─────────────────────────────────────────── */
+  .top {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(19, 19, 22, .86);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--line);
+  }
+  .top-inner {
+    max-width: 1280px; margin: 0 auto; padding: 14px 32px;
+    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+  }
+  .top h1 { font: 600 15px/1 var(--font-display); margin: 0; letter-spacing: .01em; }
+  .top h1 span { color: var(--text-3); font-weight: 400; margin-left: 8px; }
+  .jump { display: flex; gap: 4px; margin-left: auto; }
+  .jump a {
+    color: var(--text-2); text-decoration: none; font-size: 13px;
+    padding: 6px 10px; border-radius: 6px;
+  }
+  .jump a:hover { background: var(--surface-2); color: var(--text); }
+  .seg {
+    display: inline-flex; padding: 3px; gap: 2px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  }
+  .seg button {
+    font: inherit; font-size: 13px; color: var(--text-2);
+    background: none; border: 0; padding: 5px 12px; border-radius: 5px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); box-shadow: 0 0 0 1px var(--line-strong); }
+  .seg-label { font-size: 12px; color: var(--text-3); margin-right: 8px; }
+
+  /* ── Intro ───────────────────────────────────────────── */
+  .intro { padding: 56px 0 28px; max-width: 760px; }
+  .intro h2 { font: 600 34px/1.15 var(--font-display); margin: 0 0 12px; letter-spacing: -.01em; }
+  .intro p { color: var(--text-2); margin: 0; font-size: 15px; }
+
+  /* ── Stage (follows the Dark / Light switch) ─────────── */
+  .stage { background: var(--stage-dark); transition: background .15s; }
+  body[data-stage="light"] .stage { background: var(--stage-light); }
+
+  /* ── Hero grid ───────────────────────────────────────── */
+  .hero { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .card .stage { display: grid; place-items: center; height: 224px; border-bottom: 1px solid var(--line); }
+  .card-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .kicker { font-size: 12px; color: var(--text-3); letter-spacing: .04em; }
+  .card h3 { font: 600 16px/1.3 var(--font-display); margin: 0; }
+  .card p { margin: 0 0 12px; color: var(--text-2); font-size: 13px; flex: 1; }
+  .btn {
+    font: inherit; font-size: 13px; font-weight: 600; color: var(--text);
+    background: var(--surface-2); border: 1px solid var(--line-strong);
+    padding: 7px 14px; border-radius: 6px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn:hover { background: #2b2d33; }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #0b1020; }
+  .btn.primary:hover { background: #74a0ff; }
+  .btn svg { width: 14px; height: 14px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ── Concept sections ────────────────────────────────── */
+  .concept { margin-top: 72px; scroll-margin-top: 76px; }
+  .concept-head {
+    display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap;
+    padding-bottom: 18px; margin-bottom: 20px; border-bottom: 1px solid var(--line);
+  }
+  .concept-head .titles { flex: 1; min-width: 280px; }
+  .concept-head h2 { font: 600 24px/1.2 var(--font-display); margin: 4px 0 6px; }
+  .concept-head p { margin: 0; color: var(--text-2); max-width: 720px; }
+  .cols { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
+  .panel h4 { font: 600 13px/1 var(--font); margin: 0 0 14px; color: var(--text); }
+  .panel h4 small { font-weight: 400; color: var(--text-3); margin-left: 8px; font-size: 12px; }
+  .sub { font-size: 12px; color: var(--text-3); margin: 16px 0 8px; }
+
+  .scale-top { display: grid; grid-template-columns: 296px minmax(0, 1fr); gap: 12px; }
+  .big { border-radius: 10px; display: grid; place-items: center; height: 296px; position: relative; }
+  .big figcaption, .sizes figcaption { font-size: 11px; font-variant-numeric: tabular-nums; }
+  .big figcaption { position: absolute; left: 10px; bottom: 8px; color: #8a8f9a; }
+  figure { margin: 0; }
+  .strips { display: grid; grid-template-rows: 1fr 1fr; gap: 12px; }
+  .strip { border-radius: 10px; display: flex; align-items: flex-end; justify-content: space-around; padding: 18px 10px 12px; }
+  .strip.dark { background: var(--stage-dark); color: #9a9fa9; }
+  .strip.light { background: var(--stage-light); color: #5c6068; }
+  .sizes { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+
+  .peek { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .peek figure { border-radius: 10px; padding: 12px 12px 8px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .peek figure.dark { background: var(--stage-dark); color: #9a9fa9; }
+  .peek figure.light { background: var(--stage-light); color: #5c6068; }
+  .peek canvas { image-rendering: pixelated; width: 100%; max-width: 120px; height: auto; aspect-ratio: 1; }
+  .peek figcaption { font-size: 11px; }
+
+  /* ── Windows 11 taskbar mock ─────────────────────────── */
+  .desk { border-radius: 10px; overflow: hidden; position: relative; height: 104px; }
+  .desk.dark { background: radial-gradient(120% 160% at 30% 120%, #2a4d9c 0%, #152a5e 38%, #0b1226 78%); }
+  .desk.light { background: radial-gradient(120% 160% at 30% 120%, #9cc9ff 0%, #c9e2ff 40%, #eaf2fb 80%); }
+  .tb {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 48px;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+    backdrop-filter: blur(24px) saturate(1.4);
+  }
+  .dark .tb { background: rgba(28, 28, 28, .88); border-top: 1px solid rgba(255, 255, 255, .08); color: #fff; }
+  .light .tb { background: rgba(243, 243, 243, .88); border-top: 1px solid rgba(0, 0, 0, .06); color: #1b1b1b; }
+  .tb-item { width: 40px; height: 40px; border-radius: 4px; display: grid; place-items: center; position: relative; }
+  .tb-item svg, .tb-item img { width: 24px; height: 24px; }
+  .tb-item.active::after {
+    content: ""; position: absolute; bottom: 1px; left: 50%; width: 16px; height: 3px; margin-left: -8px; border-radius: 2px;
+  }
+  .dark .tb-item.active { background: rgba(255, 255, 255, .07); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
+  .dark .tb-item.active::after { background: #4cc2ff; }
+  .light .tb-item.active { background: rgba(255, 255, 255, .7); box-shadow: 0 0 0 1px rgba(0, 0, 0, .05); }
+  .light .tb-item.active::after { background: #0067c0; }
+  .tb-item.run::after {
+    content: ""; position: absolute; bottom: 1px; left: 50%; width: 6px; height: 3px; margin-left: -3px; border-radius: 2px;
+    background: currentColor; opacity: .45;
+  }
+  .tray { position: absolute; right: 12px; top: 0; height: 100%; display: flex; align-items: center; gap: 10px; font-size: 11px; line-height: 1.25; text-align: right; }
+  .tray svg { width: 16px; height: 16px; }
+  .tb-start { color: #4cc2ff; }
+  .light .tb-start { color: #0067c0; }
+  .desk-label { position: absolute; left: 12px; top: 10px; font-size: 11px; }
+  .dark .desk-label { color: rgba(255, 255, 255, .6); }
+  .light .desk-label { color: rgba(0, 0, 0, .55); }
+
+  /* ── WinUI 3 window mock (follows the Dark / Light switch) ── */
+  .win {
+    --w-bg: #202020; --w-card: #2b2b2b; --w-line: rgba(255, 255, 255, .08); --w-text: #fff; --w-text2: rgba(255, 255, 255, .72); --w-sel: rgba(255, 255, 255, .06); --w-accent: #4cc2ff; --w-btn: rgba(255, 255, 255, .06);
+    background: var(--w-bg); color: var(--w-text); border: 1px solid var(--w-line); border-radius: 8px; overflow: hidden;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, .4);
+    font-family: var(--font);
+  }
+  body[data-stage="light"] .win {
+    --w-bg: #f3f3f3; --w-card: #fbfbfb; --w-line: rgba(0, 0, 0, .09); --w-text: #1a1a1a; --w-text2: rgba(0, 0, 0, .62); --w-sel: rgba(0, 0, 0, .05); --w-accent: #0067c0; --w-btn: rgba(255, 255, 255, .8);
+  }
+  .win-title { height: 32px; display: flex; align-items: center; padding-left: 16px; gap: 12px; font-size: 12px; }
+  .win-title img { width: 16px; height: 16px; }
+  .win-caps { margin-left: auto; display: flex; }
+  .win-caps span { width: 46px; height: 32px; display: grid; place-items: center; color: var(--w-text); }
+  .win-caps svg { width: 10px; height: 10px; }
+  .win-body { display: grid; grid-template-columns: 148px 1fr; min-height: 196px; }
+  .win-nav { padding: 6px 4px 12px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+  .win-nav span { padding: 7px 12px; border-radius: 4px; color: var(--w-text2); position: relative; }
+  .win-nav span.sel { background: var(--w-sel); color: var(--w-text); }
+  .win-nav span.sel::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--w-accent); }
+  .win-page { padding: 8px 20px 20px 16px; }
+  .win-page h5 { font: 600 20px/1.3 var(--font-display); margin: 0 0 12px; }
+  .about { background: var(--w-card); border: 1px solid var(--w-line); border-radius: 8px; padding: 18px; display: flex; align-items: center; gap: 16px; }
+  .about img { width: 48px; height: 48px; flex: none; }
+  .about b { display: block; font: 600 16px/1.3 var(--font-display); }
+  .about small { color: var(--w-text2); font-size: 12px; }
+  .about .wbtn { margin-left: auto; font-size: 13px; padding: 5px 12px; border-radius: 4px; background: var(--w-btn); border: 1px solid var(--w-line); white-space: nowrap; }
+
+  .ctx { display: grid; gap: 12px; }
+  footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--text-3); font-size: 12px; max-width: 760px; }
+
+  @media (max-width: 1080px) {
+    .hero { grid-template-columns: repeat(2, 1fr); }
+    .cols { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 620px) {
+    .wrap, .top-inner { padding-left: 16px; padding-right: 16px; }
+    .hero { grid-template-columns: 1fr; }
+    .scale-top { grid-template-columns: 1fr; }
+    .peek { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .jump { display: none; }
+  }
+</style>
+</head>
+<body data-stage="dark">
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     ICON SOURCES — each block below is a complete, standalone SVG file.
+     The page renders every preview from these exact bytes (as <img>), and
+     "Download SVG" saves them unchanged.
+     ═══════════════════════════════════════════════════════════════════════ -->
+
+<script type="image/svg+xml" id="svg-a">
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <title>SuperBar - Concept A - Fluent Floating Dock</title>
+  <defs>
+    <linearGradient id="a-plate" x1="44" y1="36" x2="212" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#55CDFF"/>
+      <stop offset=".48" stop-color="#1E90F3"/>
+      <stop offset="1" stop-color="#1355CC"/>
+    </linearGradient>
+    <linearGradient id="a-rim" x1="128" y1="36" x2="128" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".62"/>
+      <stop offset=".32" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset=".7" stop-color="#062B7A" stop-opacity="0"/>
+      <stop offset="1" stop-color="#062B7A" stop-opacity=".38"/>
+    </linearGradient>
+    <linearGradient id="a-sheet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity=".12"/>
+    </linearGradient>
+    <linearGradient id="a-dock" x1="128" y1="150" x2="128" y2="202" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DCEAFF"/>
+    </linearGradient>
+    <linearGradient id="a-app1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2B7BF0"/>
+      <stop offset="1" stop-color="#0F45B8"/>
+    </linearGradient>
+    <linearGradient id="a-app2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3DB4FA"/>
+      <stop offset="1" stop-color="#1A8AE6"/>
+    </linearGradient>
+    <linearGradient id="a-app3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7FDFFF"/>
+      <stop offset="1" stop-color="#3FBCF2"/>
+    </linearGradient>
+    <linearGradient id="a-status" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2450C4"/>
+      <stop offset="1" stop-color="#14308F"/>
+    </linearGradient>
+    <clipPath id="a-clip"><rect x="20" y="36" width="216" height="184" rx="40"/></clipPath>
+    <filter id="a-blur" x="-20%" y="-80%" width="140%" height="260%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <filter id="a-blur-sm" x="-20%" y="-30%" width="140%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+  </defs>
+
+  <!-- Desktop plate -->
+  <rect x="20" y="36" width="216" height="184" rx="40" fill="url(#a-plate)"/>
+
+  <g clip-path="url(#a-clip)">
+    <!-- Two app windows resting on the desktop -->
+    <rect x="48" y="62" width="108" height="70" rx="14" fill="#0A3C9E" fill-opacity=".28" filter="url(#a-blur-sm)" transform="translate(0 5)"/>
+    <rect x="48" y="62" width="108" height="70" rx="14" fill="url(#a-sheet)"/>
+    <rect x="48.75" y="62.75" width="106.5" height="68.5" rx="13.25" stroke="#FFFFFF" stroke-opacity=".38" stroke-width="1.5"/>
+    <rect x="124" y="80" width="84" height="52" rx="12" fill="#0A3C9E" fill-opacity=".3" filter="url(#a-blur-sm)" transform="translate(0 5)"/>
+    <rect x="124" y="80" width="84" height="52" rx="12" fill="#6CCBFF"/>
+    <rect x="124" y="80" width="84" height="52" rx="12" fill="url(#a-sheet)"/>
+    <rect x="124.75" y="80.75" width="82.5" height="50.5" rx="11.25" stroke="#FFFFFF" stroke-opacity=".45" stroke-width="1.5"/>
+
+    <!-- Dock shadow, cast on the plate -->
+    <rect x="38" y="150" width="180" height="52" rx="18" fill="#082C80" fill-opacity=".5" filter="url(#a-blur)" transform="translate(0 7)"/>
+  </g>
+
+  <!-- Plate rim: top light, bottom shade -->
+  <rect x="21.5" y="37.5" width="213" height="181" rx="38.5" stroke="url(#a-rim)" stroke-width="3"/>
+
+  <!-- Floating dock -->
+  <rect x="38" y="150" width="180" height="52" rx="18" fill="url(#a-dock)"/>
+  <rect x="49" y="161" width="30" height="30" rx="9" fill="url(#a-app1)"/>
+  <rect x="84" y="161" width="30" height="30" rx="9" fill="url(#a-app2)"/>
+  <rect x="119" y="161" width="30" height="30" rx="9" fill="url(#a-app3)"/>
+  <rect x="165" y="161" width="42" height="30" rx="15" fill="url(#a-status)"/>
+  <circle cx="179" cy="176" r="4" fill="#7FDFFF"/>
+  <rect x="187" y="173" width="12" height="6" rx="3" fill="#FFFFFF" fill-opacity=".92"/>
+</svg>
+</script>
+
+<script type="image/svg+xml" id="svg-b">
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <title>SuperBar - Concept B - Modular Prism</title>
+  <defs>
+    <linearGradient id="b-rail" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#B49BFF"/>
+      <stop offset=".5" stop-color="#7653F3"/>
+      <stop offset="1" stop-color="#4A27C6"/>
+    </linearGradient>
+    <linearGradient id="b-rail-rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".55"/>
+      <stop offset=".2" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="b-bar" x1="36" y1="48" x2="220" y2="208" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#66DBFF"/>
+      <stop offset=".5" stop-color="#2D9EFF"/>
+      <stop offset="1" stop-color="#2962EA"/>
+    </linearGradient>
+    <linearGradient id="b-bar-rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".65"/>
+      <stop offset=".55" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="b-rails">
+      <rect x="75" y="22" width="34" height="212" rx="13" transform="translate(22.57 0) skewX(-10)"/>
+      <rect x="147" y="22" width="34" height="212" rx="13" transform="translate(22.57 0) skewX(-10)"/>
+    </clipPath>
+    <clipPath id="b-bars">
+      <rect x="20" y="62" width="216" height="48" rx="16"/>
+      <rect x="20" y="146" width="216" height="48" rx="16"/>
+    </clipPath>
+    <filter id="b-blur" x="-10%" y="-80%" width="120%" height="260%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="5.5"/>
+    </filter>
+  </defs>
+
+  <!-- Back layer: two slanted .NET-violet rails -->
+  <g transform="translate(22.57 0) skewX(-10)">
+    <rect x="75" y="22" width="34" height="212" rx="13" fill="url(#b-rail)"/>
+    <rect x="147" y="22" width="34" height="212" rx="13" fill="url(#b-rail)"/>
+    <rect x="75.750" y="22.750" width="32.500" height="210.500" rx="12.250" stroke="url(#b-rail-rim)" stroke-width="1.500"/>
+    <rect x="147.750" y="22.750" width="32.500" height="210.500" rx="12.250" stroke="url(#b-rail-rim)" stroke-width="1.500"/>
+  </g>
+
+  <!-- Bar shadows, cast only on the rails -->
+  <g clip-path="url(#b-rails)">
+    <rect x="20" y="62" width="216" height="48" rx="16" fill="#1C0A66" fill-opacity=".62" filter="url(#b-blur)" transform="translate(0 7)"/>
+    <rect x="20" y="146" width="216" height="48" rx="16" fill="#1C0A66" fill-opacity=".62" filter="url(#b-blur)" transform="translate(0 7)"/>
+  </g>
+
+  <!-- Front layer: two Fluent glass bars -->
+  <rect x="20" y="62" width="216" height="48" rx="16" fill="url(#b-bar)"/>
+  <rect x="20" y="146" width="216" height="48" rx="16" fill="url(#b-bar)"/>
+
+  <!-- Prism: each rail reappears inside the glass, shifted sideways -->
+  <g clip-path="url(#b-bars)">
+    <g transform="translate(32.57 0) skewX(-10)" fill="#EFE9FF" fill-opacity=".5">
+      <rect x="75" y="22" width="34" height="212" rx="13"/>
+      <rect x="147" y="22" width="34" height="212" rx="13"/>
+    </g>
+  </g>
+
+  <rect x="20.750" y="62.750" width="214.500" height="46.500" rx="15.250" stroke="url(#b-bar-rim)" stroke-width="1.500"/>
+  <rect x="20.750" y="146.750" width="214.500" height="46.500" rx="15.250" stroke="url(#b-bar-rim)" stroke-width="1.500"/>
+</svg>
+</script>
+
+<script type="image/svg+xml" id="svg-c">
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <title>SuperBar - Concept C - Super-S Layered Bar</title>
+  <defs>
+    <linearGradient id="c-top" x1="36" y1="24" x2="190" y2="156" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#52D3FF"/>
+      <stop offset=".55" stop-color="#2399F5"/>
+      <stop offset="1" stop-color="#1B6FE6"/>
+    </linearGradient>
+    <linearGradient id="c-bot" x1="70" y1="112" x2="216" y2="236" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3C8DFF"/>
+      <stop offset=".5" stop-color="#5566F2"/>
+      <stop offset="1" stop-color="#7040E0"/>
+    </linearGradient>
+    <mask id="c-bot-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
+      <path d="M52 204h114a38 38 0 0 0 0-76h-30" stroke="#FFFFFF" stroke-width="48" stroke-linecap="round"/>
+    </mask>
+    <mask id="c-top-edge" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
+      <path d="M204 52H90a38 38 0 0 0 0 76h30" stroke="#FFFFFF" stroke-width="48" stroke-linecap="round"/>
+      <path d="M204 52H90a38 38 0 0 0 0 76h30" stroke="#000000" stroke-width="48" stroke-linecap="round" transform="translate(0 3)"/>
+    </mask>
+    <mask id="c-bot-edge" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
+      <path d="M52 204h114a38 38 0 0 0 0-76h-30" stroke="#FFFFFF" stroke-width="48" stroke-linecap="round"/>
+      <path d="M52 204h114a38 38 0 0 0 0-76h-30" stroke="#000000" stroke-width="48" stroke-linecap="round" transform="translate(0 3)"/>
+    </mask>
+    <filter id="c-blur" filterUnits="userSpaceOnUse" x="0" y="0" width="256" height="256" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+  </defs>
+
+  <!-- Lower bar segment: bottom stroke, right turn, tucks under the centre -->
+  <path d="M52 204h114a38 38 0 0 0 0-76h-30" stroke="url(#c-bot)" stroke-width="48" stroke-linecap="round"/>
+  <rect width="256" height="256" fill="#FFFFFF" fill-opacity=".38" mask="url(#c-bot-edge)"/>
+
+  <!-- Elevation shadow of the upper segment, cast only on the lower one -->
+  <g mask="url(#c-bot-mask)">
+    <path d="M204 52H90a38 38 0 0 0 0 76h30" stroke="#0C1470" stroke-opacity=".62" stroke-width="48" stroke-linecap="round" filter="url(#c-blur)" transform="translate(4 6)"/>
+  </g>
+
+  <!-- Upper bar segment: top stroke, left turn, lands on the centre -->
+  <path d="M204 52H90a38 38 0 0 0 0 76h30" stroke="url(#c-top)" stroke-width="48" stroke-linecap="round"/>
+  <rect width="256" height="256" fill="#FFFFFF" fill-opacity=".4" mask="url(#c-top-edge)"/>
+
+  <!-- Running-app indicator pills at the two terminals -->
+  <rect x="160" y="45" width="44" height="14" rx="7" fill="#FFFFFF" fill-opacity=".94"/>
+  <rect x="52" y="197" width="44" height="14" rx="7" fill="#FFFFFF" fill-opacity=".94"/>
+</svg>
+</script>
+
+<script type="image/svg+xml" id="svg-d">
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <title>SuperBar - Concept D - Interlock</title>
+  <defs>
+    <linearGradient id="d-top" x1="20" y1="20" x2="216" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#66DBFF"/>
+      <stop offset="1" stop-color="#2BA6F8"/>
+    </linearGradient>
+    <linearGradient id="d-right" x1="168" y1="20" x2="236" y2="216" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2F9FFA"/>
+      <stop offset="1" stop-color="#2B63EA"/>
+    </linearGradient>
+    <linearGradient id="d-bottom" x1="236" y1="168" x2="40" y2="236" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3563EC"/>
+      <stop offset="1" stop-color="#5D47E2"/>
+    </linearGradient>
+    <linearGradient id="d-left" x1="88" y1="236" x2="20" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6A45E0"/>
+      <stop offset="1" stop-color="#A88CFF"/>
+    </linearGradient>
+    <linearGradient id="d-rim" x1="128" y1="20" x2="128" y2="236" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".62"/>
+      <stop offset=".2" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset=".8" stop-color="#150A66" stop-opacity="0"/>
+      <stop offset="1" stop-color="#150A66" stop-opacity=".34"/>
+    </linearGradient>
+    <clipPath id="d-ring">
+      <path clip-rule="evenodd" d="M60 20h136a40 40 0 0 1 40 40v136a40 40 0 0 1-40 40H60a40 40 0 0 1-40-40V60a40 40 0 0 1 40-40zM100 88a12 12 0 0 0-12 12v56a12 12 0 0 0 12 12h56a12 12 0 0 0 12-12v-56a12 12 0 0 0-12-12z"/>
+    </clipPath>
+    <clipPath id="d-on-left"><rect x="20" y="40" width="80" height="196"/></clipPath>
+    <clipPath id="d-on-top"><rect x="20" y="20" width="196" height="80"/></clipPath>
+    <clipPath id="d-on-right"><rect x="156" y="20" width="80" height="196"/></clipPath>
+    <clipPath id="d-on-bottom"><rect x="40" y="156" width="196" height="80"/></clipPath>
+    <clipPath id="d-lower"><rect x="0" y="128" width="256" height="128"/></clipPath>
+    <filter id="d-blur" filterUnits="userSpaceOnUse" x="-40" y="-40" width="336" height="336" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+
+  <!-- One continuous bar, four zones, folded into a loop.
+       Each zone's head rests on the next zone's tail, all the way round. -->
+  <g clip-path="url(#d-ring)">
+    <rect x="20" y="40" width="80" height="196" fill="url(#d-left)"/>
+    <g clip-path="url(#d-on-left)">
+      <rect x="20" y="20" width="196" height="80" fill="#2A1396" fill-opacity=".7" filter="url(#d-blur)" transform="translate(0 5)"/>
+    </g>
+
+    <rect x="20" y="20" width="196" height="80" fill="url(#d-top)"/>
+    <g clip-path="url(#d-on-top)">
+      <rect x="156" y="20" width="80" height="196" fill="#0A3F9C" fill-opacity=".7" filter="url(#d-blur)" transform="translate(-5 0)"/>
+    </g>
+
+    <rect x="156" y="20" width="80" height="196" fill="url(#d-right)"/>
+    <g clip-path="url(#d-on-right)">
+      <rect x="40" y="156" width="196" height="80" fill="#0C1E86" fill-opacity=".7" filter="url(#d-blur)" transform="translate(0 -5)"/>
+    </g>
+
+    <rect x="40" y="156" width="196" height="80" fill="url(#d-bottom)"/>
+    <g clip-path="url(#d-on-bottom)">
+      <rect x="20" y="40" width="80" height="196" fill="#1B0E7C" fill-opacity=".7" filter="url(#d-blur)" transform="translate(5 0)"/>
+    </g>
+
+    <!-- Close the loop: the left zone's head comes back over the bottom zone -->
+    <g clip-path="url(#d-lower)">
+      <rect x="20" y="40" width="80" height="196" fill="url(#d-left)"/>
+    </g>
+
+    <!-- Edge light: top of the frame, and the lit top edge of the bottom zone -->
+    <path d="M100 168h56a12 12 0 0 0 12-12h68" stroke="#FFFFFF" stroke-opacity=".42" stroke-width="1.750" transform="translate(0 .9)"/>
+    <rect x="21.500" y="21.500" width="213" height="213" rx="38.500" stroke="url(#d-rim)" stroke-width="3"/>
+  </g>
+</svg>
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<div class="top">
+  <div class="top-inner">
+    <h1>SuperBar Icon Studio <span>4 concepts</span></h1>
+    <div>
+      <span class="seg-label">Stage</span>
+      <span class="seg" role="group" aria-label="Stage background">
+        <button type="button" data-stage="dark" aria-pressed="true">Dark</button>
+        <button type="button" data-stage="light" aria-pressed="false">Light</button>
+      </span>
+    </div>
+    <nav class="jump" aria-label="Concepts">
+      <a href="#concept-a">A · Dock</a>
+      <a href="#concept-b">B · Prism</a>
+      <a href="#concept-c">C · Super-S</a>
+      <a href="#concept-d">D · Interlock</a>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="intro">
+    <h2>Four directions for the SuperBar app icon</h2>
+    <p>Every preview on this page is rendered from the same SVG you download, at real pixel sizes. Use the Stage switch to flip the large previews and the Control Center mockup between Windows dark and light.</p>
+  </div>
+
+  <div class="hero" id="hero"></div>
+  <div id="concepts"></div>
+
+  <footer>
+    Icons are drawn on a 256 × 256 canvas with a 16 px safe margin (20 px on most edges). Layer shadows are clipped to the shapes they fall on, so nothing bleeds onto the taskbar. Neighbouring taskbar icons in the mockups are generic placeholders.
+  </footer>
+</div>
+
+<script>
+(() => {
+  const CONCEPTS = [
+    {
+      id: 'a', letter: 'A', name: 'Fluent Floating Dock', tag: 'Pure Windows 11',
+      file: 'superbar-icon-a-fluent-dock.svg',
+      short: 'A Fluent-blue desktop with a white dock floating above its bottom edge: three apps on the left, one status pill on the right.',
+      long: 'The literal one. A landscape desktop plate in Fluent blue, two glass app windows, and the hero layer: a white dock lifted off the plate with a soft shadow. Apps sit left, the system pill sits right, exactly like the bar itself.'
+    },
+    {
+      id: 'b', letter: 'B', name: 'Modular Prism', tag: 'Windows × C# / .NET',
+      file: 'superbar-icon-b-modular-prism.svg',
+      short: 'Two cyan glass bars in front of two slanted .NET-violet rails. Behind the glass each rail reappears shifted, like light through a prism.',
+      long: 'Two Fluent glass bars float in front of two slanted violet rails, so the sharp sign is built from layers instead of drawn as a glyph. Where a rail passes behind a bar it reappears paler and shifted sideways, the way a prism bends light. That shift also splits each bar into modules.'
+    },
+    {
+      id: 'c', letter: 'C', name: 'Super-S Layered Bar', tag: 'Flagship brand mark',
+      file: 'superbar-icon-c-super-s.svg',
+      short: 'A geometric S built from two hooked bar segments. The cyan one lands on top of the violet one in the centre.',
+      long: 'Two identical hooked bars, one rotated 180° from the other. The upper segment lands on the lower one mid-stroke and casts an elevation shadow on it. Each free end carries a white pill, the taskbar’s running-app indicator.'
+    },
+    {
+      id: 'd', letter: 'D', name: 'Interlock', tag: 'Designer’s wildcard',
+      file: 'superbar-icon-d-interlock.svg',
+      short: 'One continuous bar folded into a loop. Its four zones each rest on the next one’s tail, all the way round.',
+      long: 'SuperBar is one continuous bar made of four zones: Start, apps, widgets, system. Here that bar folds into a square loop, each zone resting on the next one’s tail all the way round, cyan through blue to violet. The opening in the middle is your desktop.'
+    }
+  ];
+
+  const svgOf = id => document.getElementById('svg-' + id).textContent.trim() + '\n';
+  const urlOf = svg => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+  const icon = (url, size, alt = '') => `<img src="${url}" width="${size}" height="${size}" alt="${alt}">`;
+
+  const DL = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>';
+
+  // Generic placeholder neighbours for the taskbar mock (24 px grid).
+  const NEIGHBOURS = {
+    start: '<svg class="tb-start" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8.4" height="8.4" rx="1.2"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="1.2"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="1.2"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="1.2"/></svg>',
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg>',
+    files: '<svg viewBox="0 0 24 24"><path d="M2 6.5A2.5 2.5 0 0 1 4.5 4h4.2c.7 0 1.3.3 1.8.8L12 6.5h7.5A2.5 2.5 0 0 1 22 9v8.5a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 17.500z" fill="#E6A100"/><path d="M2 10.500A2.500 2.500 0 0 1 4.500 8h15A2.500 2.500 0 0 1 22 10.500v7A2.500 2.500 0 0 1 19.500 20h-15A2.500 2.500 0 0 1 2 17.500z" fill="#FFCF48"/></svg>',
+    browser: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1FA67A"/><path d="M12 2a10 10 0 0 1 9.400 13.400C19 17.500 15 16 14 13c-1-3-5-4-8.500-2.500A10 10 0 0 1 12 2z" fill="#2E7BE6"/><circle cx="12" cy="12" r="3.600" fill="#EAF4FF"/></svg>',
+    terminal: '<svg viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="16" rx="3" fill="#2D2D30" stroke="#6B6B70"/><path d="m6.500 9.500 3 2.500-3 2.500M12 15h5" stroke="#F2F2F2" stroke-width="1.600" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
+  const TRAY = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.300" stroke-linecap="round"><path d="M1.500 6.500a9.500 9.500 0 0 1 13 0M4 9a6 6 0 0 1 8 0"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/></svg>'
+    + '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.300" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.500h2.500L8 3.500v9l-3.500-3H2zM10.500 6a3 3 0 0 1 0 4M12.500 4a6 6 0 0 1 0 8"/></svg>';
+
+  const taskbar = (theme, url) => `
+    <div class="desk ${theme}">
+      <span class="desk-label">${theme === 'dark' ? 'Dark' : 'Light'} taskbar · 24 px</span>
+      <div class="tb">
+        <span class="tb-item">${NEIGHBOURS.start}</span>
+        <span class="tb-item">${NEIGHBOURS.search}</span>
+        <span class="tb-item run">${NEIGHBOURS.files}</span>
+        <span class="tb-item">${NEIGHBOURS.browser}</span>
+        <span class="tb-item active">${icon(url, 24, 'SuperBar')}</span>
+        <span class="tb-item run">${NEIGHBOURS.terminal}</span>
+        <div class="tray">${TRAY}<span>10:24 PM<br>11/27/2026</span></div>
+      </div>
+    </div>`;
+
+  const CAPS = '<span><svg viewBox="0 0 10 10" stroke="currentColor" fill="none"><path d="M0 5.500h10"/></svg></span>'
+    + '<span><svg viewBox="0 0 10 10" stroke="currentColor" fill="none"><rect x=".5" y=".5" width="9" height="9" rx="1.500"/></svg></span>'
+    + '<span><svg viewBox="0 0 10 10" stroke="currentColor" fill="none"><path d="m.5.5 9 9m0-9-9 9"/></svg></span>';
+
+  const windowMock = url => `
+    <div class="win">
+      <div class="win-title">${icon(url, 16)}<span>SuperBar Control Center</span><div class="win-caps">${CAPS}</div></div>
+      <div class="win-body">
+        <div class="win-nav">
+          <span>General</span><span>Appearance</span><span>Layout</span><span>Applications</span><span>Widgets</span><span class="sel">About</span>
+        </div>
+        <div class="win-page">
+          <h5>About</h5>
+          <div class="about">
+            ${icon(url, 48)}
+            <div><b>SuperBar</b><small>Version 0.1.0 · A modular taskbar for Windows 11</small></div>
+            <span class="wbtn">GitHub</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  const hero = document.getElementById('hero');
+  const concepts = document.getElementById('concepts');
+
+  function download(c) {
+    const blob = new Blob([svgOf(c.id)], { type: 'image/svg+xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = c.file;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  for (const c of CONCEPTS) {
+    const url = urlOf(svgOf(c.id));
+
+    const card = el(`
+      <article class="card">
+        <div class="stage">${icon(url, 128, c.name)}</div>
+        <div class="card-body">
+          <span class="kicker">Concept ${c.letter} · ${c.tag}</span>
+          <h3>${c.name}</h3>
+          <p>${c.short}</p>
+          <button class="btn" type="button">${DL}Download SVG</button>
+        </div>
+      </article>`);
+    card.querySelector('button').addEventListener('click', () => download(c));
+    hero.appendChild(card);
+
+    const sizes = [64, 48, 32, 24, 16];
+    const strip = theme => `<div class="strip ${theme}">${sizes.map(s => `<figure class="sizes">${icon(url, s)}<figcaption>${s}</figcaption></figure>`).join('')}</div>`;
+    const peek = (theme, s) => `<figure class="${theme}"><canvas width="${s}" height="${s}" data-size="${s}"></canvas><figcaption>${s} px, enlarged</figcaption></figure>`;
+
+    const section = el(`
+      <section class="concept" id="concept-${c.id}">
+        <div class="concept-head">
+          <div class="titles">
+            <span class="kicker">Concept ${c.letter} · ${c.tag}</span>
+            <h2>${c.name}</h2>
+            <p>${c.long}</p>
+          </div>
+          <button class="btn primary" type="button">${DL}Download SVG</button>
+        </div>
+        <div class="cols">
+          <div class="panel">
+            <h4>Scale stress-test <small>256 · 64 · 48 · 32 · 24 · 16 px</small></h4>
+            <div class="scale-top">
+              <figure class="big stage">${icon(url, 256, c.name + ' at 256 px')}<figcaption>256</figcaption></figure>
+              <div class="strips">${strip('dark')}${strip('light')}</div>
+            </div>
+            <div class="sub">Pixel peek: the exact pixels a 100 % scale display gets</div>
+            <div class="peek">${peek('dark', 16)}${peek('dark', 24)}${peek('light', 16)}${peek('light', 24)}</div>
+          </div>
+          <div class="panel">
+            <h4>In context</h4>
+            <div class="ctx">
+              ${taskbar('dark', url)}
+              ${taskbar('light', url)}
+              <div>
+                <div class="sub" style="margin-top:4px">Control Center · title bar 16 px · About card 48 px</div>
+                ${windowMock(url)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>`);
+    section.querySelector('.btn.primary').addEventListener('click', () => download(c));
+    concepts.appendChild(section);
+
+    // Pixel peek: rasterise at the true size, then scale up with nearest-neighbour.
+    const src = new Image();
+    src.onload = () => section.querySelectorAll('canvas').forEach(cv => {
+      const s = +cv.dataset.size;
+      cv.getContext('2d').drawImage(src, 0, 0, s, s);
+    });
+    src.src = url;
+  }
+
+  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+    document.body.dataset.stage = b.dataset.stage;
+    document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  }));
+})();
+</script>
+</body>
+</html>

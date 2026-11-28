@@ -16,7 +16,18 @@ internal sealed class WindowChrome(ILogger<WindowChrome> logger) : IWindowChrome
     private static readonly SubclassProc s_subclassProc = SurfaceSubclassProc;
     private readonly HashSet<nint> _subclassed = new();
 
-    public void ApplyShellSurfaceStyle(nint windowHandle)
+    // Icons loaded from .ico files, by file and pixel size. A window does not own the icons it is given, and the
+    // Control Center can be opened many times, so each one is loaded once and destroyed with this service.
+    private readonly Dictionary<(string Path, int Size), nint> _icons = new();
+
+    /// <summary>
+    /// Raised on the UI thread when one of SuperBar's surfaces becomes the active window, which for a mouse click
+    /// happens before the click reaches any button and before the shell flyout it light-dismisses (Start, tray
+    /// overflow, Quick Settings...) has finished closing. Handlers must not throw.
+    /// </summary>
+    internal static event Action? SurfaceActivated;
+
+    public void ApplyShellSurfaceStyle(nint windowHandle, bool roundedCorners = false)
     {
         if (windowHandle == 0)
         {
@@ -40,21 +51,94 @@ internal sealed class WindowChrome(ILogger<WindowChrome> logger) : IWindowChrome
         SetWindowLongPtr(windowHandle, GWL_STYLE, (nint)SurfaceStyle((long)GetWindowLongPtr(windowHandle, GWL_STYLE)));
         SetWindowPos(windowHandle, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
-        // Windows 11: sharp, flush edges and no 1px DWM outline. Both attributes fail harmlessly on Windows 10.
-        var corner = DWMWCP_DONOTROUND;
+        // Windows 11: the bar gets sharp, flush edges and no 1px DWM outline; popups keep the system's rounded
+        // corners and outline. Both attributes fail harmlessly on Windows 10.
+        var corner = roundedCorners ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
         DwmSetWindowAttribute(windowHandle, DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
-        var border = DWMWA_COLOR_NONE;
-        DwmSetWindowAttribute(windowHandle, DWMWA_BORDER_COLOR, ref border, sizeof(uint));
+        if (!roundedCorners)
+        {
+            var border = DWMWA_COLOR_NONE;
+            DwmSetWindowAttribute(windowHandle, DWMWA_BORDER_COLOR, ref border, sizeof(uint));
+        }
 
         logger.LogDebug("Applied shell-surface chrome to window 0x{Handle:X}", windowHandle);
     }
 
     public void ShowWithoutActivation(nint windowHandle) => ShowWindow(windowHandle, SW_SHOWNOACTIVATE);
 
+    public void SetOpacity(nint windowHandle, double opacity)
+    {
+        var exStyle = (long)GetWindowLongPtr(windowHandle, GWL_EXSTYLE);
+        if ((exStyle & WS_EX_LAYERED) == 0)
+        {
+            SetWindowLongPtr(windowHandle, GWL_EXSTYLE, (nint)(exStyle | WS_EX_LAYERED));
+        }
+
+        var alpha = (byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255);
+        SetLayeredWindowAttributes(windowHandle, 0, alpha, LWA_ALPHA);
+    }
+
+    public void MoveTo(nint windowHandle, int x, int y) =>
+        SetWindowPos(windowHandle, 0, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+
     public double GetScale(nint windowHandle)
     {
         var dpi = windowHandle == 0 ? 0 : GetDpiForWindow(windowHandle);
         return dpi == 0 ? 1.0 : dpi / 96.0;
+    }
+
+    public bool SetWindowIcon(nint windowHandle, string iconPath)
+    {
+        if (windowHandle == 0)
+        {
+            return false;
+        }
+
+        var dpi = GetDpiForWindow(windowHandle);
+        if (dpi == 0)
+        {
+            dpi = 96;
+        }
+
+        // The system's own sizes at this DPI (32 and 16 px at 100%), so LoadImage picks the matching .ico frame
+        // instead of scaling one.
+        var big = LoadIcon(iconPath, GetSystemMetricsForDpi(SM_CXICON, dpi));
+        var small = LoadIcon(iconPath, GetSystemMetricsForDpi(SM_CXSMICON, dpi));
+        if (big != 0)
+        {
+            SendMessage(windowHandle, WM_SETICON, ICON_BIG, big);
+        }
+
+        if (small != 0)
+        {
+            SendMessage(windowHandle, WM_SETICON, ICON_SMALL, small);
+        }
+
+        if (big == 0 || small == 0)
+        {
+            logger.LogWarning("Could not load the window icon {Path} (big: {Big}, small: {Small})", iconPath, big != 0, small != 0);
+        }
+
+        return big != 0 || small != 0;
+    }
+
+    private nint LoadIcon(string path, int size)
+    {
+        if (size <= 0)
+        {
+            return 0;
+        }
+
+        if (!_icons.TryGetValue((path, size), out var icon))
+        {
+            icon = LoadImage(0, path, IMAGE_ICON, size, size, LR_LOADFROMFILE);
+            if (icon != 0)
+            {
+                _icons[(path, size)] = icon;
+            }
+        }
+
+        return icon;
     }
 
     internal static long SurfaceStyle(long style) =>
@@ -98,6 +182,10 @@ internal sealed class WindowChrome(ILogger<WindowChrome> logger) : IWindowChrome
                 return result;
             }
 
+            case WM_ACTIVATE when ((int)wParam & 0xFFFF) != WA_INACTIVE:
+                SurfaceActivated?.Invoke();
+                break;
+
             case WM_NCDESTROY:
                 RemoveWindowSubclass(hWnd, s_subclassProc, SubclassId);
                 break;
@@ -117,5 +205,12 @@ internal sealed class WindowChrome(ILogger<WindowChrome> logger) : IWindowChrome
         }
 
         _subclassed.Clear();
+
+        foreach (var icon in _icons.Values)
+        {
+            DestroyIcon(icon);
+        }
+
+        _icons.Clear();
     }
 }

@@ -11,8 +11,70 @@ public class SettingsNormalizerTests
 
         Assert.Contains(s.Layout, p => p.Kind == SectionKind.Start);
         Assert.Contains(s.Layout, p => p.Kind == SectionKind.Applications);
-        Assert.Contains(s.Layout, p => p.Kind == SectionKind.Clock);
         Assert.Contains(s.Layout, p => p.Kind == SectionKind.Widget && p.WidgetInstanceId == "system-resources-1");
+        Assert.Contains(s.Layout, p => p.Kind == SectionKind.Widget && p.WidgetInstanceId == DefaultSettings.ClockWidgetInstanceId);
+        Assert.Contains(s.Widgets, w => w.TypeId == DefaultSettings.ClockWidgetType);
+        Assert.DoesNotContain(s.Layout, p => p.Kind == SectionKind.Clock);
+    }
+
+    [Fact]
+    public void A_legacy_clock_section_becomes_a_clock_widget_in_the_same_place()
+    {
+        var s = new SuperBarSettings
+        {
+            Widgets = { new WidgetInstanceSettings { InstanceId = "res", TypeId = DefaultSettings.SystemResourcesWidgetType } },
+            Layout =
+            {
+                new SectionPlacement { Id = "start", Kind = SectionKind.Start, Zone = TaskbarZone.Left },
+                new SectionPlacement { Id = "apps", Kind = SectionKind.Applications, Zone = TaskbarZone.Left },
+                new SectionPlacement { Id = "my-clock", Kind = SectionKind.Clock, Zone = TaskbarZone.Center },
+                new SectionPlacement { Id = "w", Kind = SectionKind.Widget, Zone = TaskbarZone.Right, WidgetInstanceId = "res" },
+            },
+        };
+
+        var n = SettingsNormalizer.Normalize(s);
+
+        var clock = Assert.Single(n.Widgets, w => w.TypeId == DefaultSettings.ClockWidgetType);
+        Assert.True(clock.Enabled);
+        Assert.Equal(["start", "apps", "my-clock", "w"], n.Layout.Select(p => p.Id));
+        var placement = n.Layout[2];
+        Assert.Equal(SectionKind.Widget, placement.Kind);
+        Assert.Equal(TaskbarZone.Center, placement.Zone);
+        Assert.Equal(clock.InstanceId, placement.WidgetInstanceId);
+        Assert.Equal(SuperBarSettings.CurrentSchemaVersion, n.SchemaVersion);
+    }
+
+    [Fact]
+    public void Migrating_the_clock_section_is_idempotent_and_reuses_an_existing_clock_widget()
+    {
+        var s = new SuperBarSettings
+        {
+            Widgets = { new WidgetInstanceSettings { InstanceId = "existing-clock", TypeId = DefaultSettings.ClockWidgetType } },
+            Layout =
+            {
+                new SectionPlacement { Id = "legacy", Kind = SectionKind.Clock, Zone = TaskbarZone.Right },
+            },
+        };
+
+        var once = SettingsNormalizer.Normalize(s);
+        var twice = SettingsNormalizer.Normalize(once);
+
+        Assert.Single(twice.Widgets, w => w.TypeId == DefaultSettings.ClockWidgetType);
+        var placement = Assert.Single(twice.Layout, p => p.Kind == SectionKind.Widget);
+        Assert.Equal("existing-clock", placement.WidgetInstanceId);
+        Assert.DoesNotContain(twice.Layout, p => p.Kind == SectionKind.Clock);
+    }
+
+    [Fact]
+    public void A_legacy_clock_section_is_dropped_when_the_clock_widget_is_already_placed()
+    {
+        var s = DefaultSettings.Create();
+        s.Layout.Add(new SectionPlacement { Id = "legacy", Kind = SectionKind.Clock, Zone = TaskbarZone.Left });
+
+        var n = SettingsNormalizer.Normalize(s);
+
+        Assert.Single(n.Layout, p => p.WidgetInstanceId == DefaultSettings.ClockWidgetInstanceId);
+        Assert.DoesNotContain(n.Layout, p => p.Id == "legacy");
     }
 
     [Theory]
@@ -55,7 +117,8 @@ public class SettingsNormalizerTests
 
         Assert.Equal(SectionKind.Start, n.Layout[0].Kind);
         Assert.Equal(SectionKind.Applications, n.Layout[1].Kind);
-        Assert.Single(n.Layout, p => p.Kind == SectionKind.Clock);
+        Assert.Single(n.Layout, p => p.Kind == SectionKind.Widget);
+        Assert.DoesNotContain(n.Layout, p => p.Kind == SectionKind.Clock);
     }
 
     [Fact]

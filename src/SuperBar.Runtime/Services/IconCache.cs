@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -16,6 +17,29 @@ public sealed class IconCache(IIconProvider provider) : IDisposable
     private const int MaxWindowIcons = 256;
     private readonly Dictionary<string, ImageSource?> _byPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<nint, ImageSource?> _byWindow = new();
+    private readonly ConditionalWeakTable<IconPixels, ImageSource> _byPixels = new();
+
+    /// <summary>A bitmap for icon pixels the shell already extracted (badges); converted once per pixel buffer.</summary>
+    public ImageSource? ForPixels(IconPixels? pixels)
+    {
+        if (pixels is null)
+        {
+            return null;
+        }
+
+        if (!_byPixels.TryGetValue(pixels, out var bitmap))
+        {
+            bitmap = ToBitmap(pixels);
+            if (bitmap is null)
+            {
+                return null;
+            }
+
+            _byPixels.AddOrUpdate(pixels, bitmap);
+        }
+
+        return bitmap;
+    }
 
     public ImageSource? ForFile(string path)
     {
@@ -70,5 +94,6 @@ public sealed class IconCache(IIconProvider provider) : IDisposable
     {
         _byPath.Clear();
         _byWindow.Clear();
+        _byPixels.Clear();
     }
 }

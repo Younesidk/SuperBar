@@ -5,6 +5,8 @@
     <AssemblyName>SuperBar</AssemblyName>
     <RootNamespace>SuperBar.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Embedded in SuperBar.exe: Explorer, Alt+Tab and SuperBar's own app buttons read the icon from the file. -->
+    <ApplicationIcon>Assets\SuperBar.ico</ApplicationIcon>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <!-- Program.Main is hand-written: Velopack, crash safety nets and single-instance checks must run before WinUI starts. -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
@@ -16,6 +18,17 @@
     <ProjectReference Include="..\SuperBar.Widgets\SuperBar.Widgets.csproj" />
     <ProjectReference Include="..\SuperBar.Runtime\SuperBar.Runtime.csproj" />
     <ProjectReference Include="..\SuperBar.ControlCenter\SuperBar.ControlCenter.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!--
+      Shipped beside SuperBar.exe: the .ico for window icons, the .png for the About page. Both are generated from
+      Assets\SuperBar.svg by design\build-app-icon.mjs; the .svg is the master and is not shipped.
+    -->
+    <None Remove="Assets\SuperBar.ico;Assets\SuperBar.png" />
+    <Content Remove="Assets\SuperBar.svg" />
+    <None Include="Assets\SuperBar.svg" />
+    <Content Include="Assets\SuperBar.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\SuperBar.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />

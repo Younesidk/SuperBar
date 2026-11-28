@@ -1,8 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Reflection;
 using System.Windows.Input;
 using Microsoft.UI.Xaml.Media;
+using SuperBar.Core.Layout;
 using SuperBar.Core.Mvvm;
 using SuperBar.Core.Runtime;
 using SuperBar.Core.Settings;
@@ -11,20 +11,41 @@ using SuperBar.Widgets;
 
 namespace SuperBar.ControlCenter.ViewModels;
 
+/// <summary>The window's shell: the pages, the selected one, and the navigation pane's status footer.</summary>
 public sealed class ControlCenterViewModel : ObservableObject, IDisposable
 {
+    private readonly ITaskbarRuntimeController _runtime;
     private PageViewModel _selectedPage;
 
-    public ControlCenterViewModel(ISettingsService settings, ITaskbarRuntimeController runtime, IWidgetRegistry widgets, IAppPaths paths, IAppLauncher launcher, IUiDispatcher dispatcher)
+    public ControlCenterViewModel(
+        ISettingsService settings,
+        ITaskbarRuntimeController runtime,
+        IWidgetRegistry widgets,
+        IWidgetSettingsEditors settingsEditors,
+        ISettingsStore store,
+        IAppPaths paths,
+        IAppLauncher launcher,
+        IIconProvider icons,
+        IWindowTracker tracker,
+        INativeTaskbarController nativeTaskbar,
+        IUpdateService updates,
+        IStartupRegistration startup,
+        IControlCenterUi ui,
+        IUiDispatcher dispatcher)
     {
+        _runtime = runtime;
+        VersionLabel = "v" + updates.CurrentVersion;
+        _runtime.StateChanged += OnRuntimeStateChanged;
+        ExitCommand = new RelayCommand(runtime.Exit);
+
         Pages = (PageViewModel[])
         [
-            new GeneralPageViewModel(settings, runtime),
+            new GeneralPageViewModel(settings, runtime, startup, ui),
             new AppearancePageViewModel(settings, dispatcher),
-            new LayoutPageViewModel(settings, widgets),
-            new WidgetsPageViewModel(settings, widgets, dispatcher),
-            new ApplicationsPageViewModel(settings),
-            new AboutPageViewModel(paths, launcher),
+            new LayoutPageViewModel(settings, widgets, dispatcher),
+            new WidgetsPageViewModel(settings, widgets, settingsEditors, store, ui, dispatcher),
+            new ApplicationsPageViewModel(settings, icons, tracker, ui, dispatcher),
+            new AboutPageViewModel(paths, launcher, settings, nativeTaskbar, updates, ui, dispatcher),
         ];
         _selectedPage = Pages[0];
     }
@@ -43,9 +64,38 @@ public sealed class ControlCenterViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Detaches the pages from long-lived services when the window closes.</summary>
+    // ----- Status footer of the navigation pane -----
+
+    /// <summary>True while the bar is shown; false while SuperBar is paused (the process keeps running).</summary>
+    public bool IsActive => _runtime.IsEnabled;
+
+    public bool IsPaused => !_runtime.IsEnabled;
+
+    public string StatusText => IsActive ? "SuperBar Active" : "Paused";
+
+    public string StatusDescription => IsActive
+        ? "SuperBar is running in place of the Windows taskbar."
+        : "SuperBar is paused and the Windows taskbar is back. Turn it on again under General.";
+
+    /// <summary>The running version, e.g. "v0.1.0".</summary>
+    public string VersionLabel { get; }
+
+    /// <summary>Restores the Windows taskbar and ends the application.</summary>
+    public ICommand ExitCommand { get; }
+
+    // Raised on the UI thread: the runtime is only enabled and disabled there.
+    private void OnRuntimeStateChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(IsActive));
+        OnPropertyChanged(nameof(IsPaused));
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(StatusDescription));
+    }
+
+    /// <summary>Detaches the shell and the pages from long-lived services when the window closes.</summary>
     public void Dispose()
     {
+        _runtime.StateChanged -= OnRuntimeStateChanged;
         foreach (var page in Pages.OfType<IDisposable>())
         {
             page.Dispose();
@@ -98,21 +148,21 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
 {
     private readonly ISettingsService _settings;
     private readonly ITaskbarRuntimeController _runtime;
+    private readonly IControlCenterUi _ui;
     private bool _hideNativeTaskbar;
+    private bool _startWithWindows;
 
-    public GeneralPageViewModel(ISettingsService settings, ITaskbarRuntimeController runtime)
+    public GeneralPageViewModel(ISettingsService settings, ITaskbarRuntimeController runtime, IStartupRegistration startup, IControlCenterUi ui)
         : base("General", "\uE713", "Turn SuperBar on or off and control how it replaces the Windows taskbar.")
     {
         _settings = settings;
         _runtime = runtime;
+        _ui = ui;
         _hideNativeTaskbar = settings.Current.Behavior.HideNativeTaskbar;
+        _startWithWindows = settings.Current.Behavior.StartWithWindows;
+        CanStartWithWindows = startup.IsAvailable;
         runtime.StateChanged += OnRuntimeStateChanged;
-        ExitCommand = new RelayCommand(runtime.Exit);
-        ResetCommand = new RelayCommand(() =>
-        {
-            _settings.ResetToDefaults();
-            HideNativeTaskbar = _settings.Current.Behavior.HideNativeTaskbar;
-        });
+        ResetCommand = new RelayCommand(ConfirmAndReset);
     }
 
     public bool IsSuperBarEnabled
@@ -150,9 +200,74 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
         }
     }
 
-    public ICommand ExitCommand { get; }
+    /// <summary>
+    /// Start SuperBar when the user signs in. Only the setting changes here; the app keeps Windows' start-up
+    /// registration in line with it.
+    /// </summary>
+    public bool StartWithWindows
+    {
+        get => _startWithWindows;
+        set
+        {
+            if (SetProperty(ref _startWithWindows, value))
+            {
+                _settings.Update(s => s.Behavior.StartWithWindows = value);
+            }
+        }
+    }
 
+    /// <summary>False in a development build, which never registers itself with Windows.</summary>
+    public bool CanStartWithWindows { get; }
+
+    public string StartWithWindowsHint => CanStartWithWindows
+        ? "Starts SuperBar when you sign in to Windows."
+        : "Available in the installed app. A development build does not register itself with Windows.";
+
+    /// <summary>Asks first, then puts every setting back to its default.</summary>
     public ICommand ResetCommand { get; }
+
+    // The About page's "Restore Windows taskbar" turns HideNativeTaskbar off while this view model stays alive.
+    public override void OnNavigatedTo() => SyncFromSettings();
+
+    private async void ConfirmAndReset()
+    {
+        try
+        {
+            var confirmed = await _ui.ConfirmAsync(
+                "Reset all settings?",
+                "Appearance, layout, widgets and pinned applications go back to their defaults. This cannot be undone.",
+                "Reset",
+                destructive: true);
+            if (!confirmed)
+            {
+                return;
+            }
+
+            _settings.ResetToDefaults();
+            SyncFromSettings();
+        }
+        catch (Exception)
+        {
+            // async void: nothing may escape. A dialog that fails to show resets nothing.
+        }
+    }
+
+    /// <summary>Re-reads the cached settings without writing them back (the property setters would call Update).</summary>
+    private void SyncFromSettings()
+    {
+        var behavior = _settings.Current.Behavior;
+        if (behavior.HideNativeTaskbar != _hideNativeTaskbar)
+        {
+            _hideNativeTaskbar = behavior.HideNativeTaskbar;
+            OnPropertyChanged(nameof(HideNativeTaskbar));
+        }
+
+        if (behavior.StartWithWindows != _startWithWindows)
+        {
+            _startWithWindows = behavior.StartWithWindows;
+            OnPropertyChanged(nameof(StartWithWindows));
+        }
+    }
 
     private void OnRuntimeStateChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(IsSuperBarEnabled));
 
@@ -161,7 +276,15 @@ public sealed class GeneralPageViewModel : PageViewModel, IDisposable
 
 public sealed class AppearancePageViewModel : PageViewModel
 {
-    private static readonly string[] SwatchColors = ["#5B8CFF", "#8B6CFF", "#2FBF9B", "#F2A541", "#F2545B", "#E8E8EC"];
+    private static readonly (string Name, string Hex)[] SwatchColors =
+    [
+        ("Blue", "#5B8CFF"),
+        ("Violet", "#8B6CFF"),
+        ("Teal", "#2FBF9B"),
+        ("Amber", "#F2A541"),
+        ("Red", "#F2545B"),
+        ("White", "#E8E8EC"),
+    ];
 
     private readonly ISettingsService _settings;
     private readonly Debouncer _debounce;
@@ -175,7 +298,7 @@ public sealed class AppearancePageViewModel : PageViewModel
     private string _accent;
 
     public AppearancePageViewModel(ISettingsService settings, IUiDispatcher dispatcher)
-        : base("Appearance", "", "Size, transparency, corners and colors of the bar.")
+        : base("Appearance", "\uE790", "Size, transparency, corners and colors of the bar.")
     {
         _settings = settings;
         _debounce = new Debouncer(dispatcher, TimeSpan.FromMilliseconds(120));
@@ -194,7 +317,52 @@ public sealed class AppearancePageViewModel : PageViewModel
                 Accent = color;
             }
         });
-        AccentSwatches = SwatchColors.Select(hex => new AccentSwatchViewModel(hex, SetAccentCommand)).ToList();
+        AccentSwatches = SwatchColors.Select(c => new AccentSwatchViewModel(c.Name, c.Hex, SetAccentCommand)).ToList();
+        UpdateSwatchSelection();
+    }
+
+    /// <summary>
+    /// Re-reads every value from the settings without writing anything back: "Reset all settings" on the General page
+    /// changes them while this view model stays alive. Skipped while this page has edits of its own still queued,
+    /// because those are newer than the stored values.
+    /// </summary>
+    public override void OnNavigatedTo()
+    {
+        if (_pendingChanges is not null)
+        {
+            return;
+        }
+
+        var a = _settings.Current.Appearance;
+        _height = a.Height;
+        _opacity = a.BackgroundOpacity;
+        _cornerRadius = a.ItemCornerRadius;
+        _spacing = a.ItemSpacing;
+        _darkTheme = a.Theme == ThemeMode.Dark;
+        _useAcrylic = a.UseAcrylic;
+        _accent = a.AccentColor;
+
+        OnPropertyChanged(nameof(TaskbarHeight));
+        OnPropertyChanged(nameof(TaskbarHeightLabel));
+        OnPropertyChanged(nameof(BackgroundOpacity));
+        OnPropertyChanged(nameof(BackgroundOpacityLabel));
+        OnPropertyChanged(nameof(CornerRadius));
+        OnPropertyChanged(nameof(CornerRadiusLabel));
+        OnPropertyChanged(nameof(ItemSpacing));
+        OnPropertyChanged(nameof(ItemSpacingLabel));
+        OnPropertyChanged(nameof(DarkTheme));
+        OnPropertyChanged(nameof(UseAcrylic));
+        OnPropertyChanged(nameof(Accent));
+        UpdateSwatchSelection();
+    }
+
+    // A stored accent that matches no swatch (edited by hand) leaves none selected.
+    private void UpdateSwatchSelection()
+    {
+        foreach (var swatch in AccentSwatches)
+        {
+            swatch.IsSelected = string.Equals(swatch.Hex, _accent, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     public double MinHeight => AppearanceSettings.MinHeight;
@@ -268,7 +436,18 @@ public sealed class AppearancePageViewModel : PageViewModel
 
     public bool UseAcrylic { get => _useAcrylic; set { if (SetProperty(ref _useAcrylic, value)) Push(s => s.Appearance.UseAcrylic = value); } }
 
-    public string Accent { get => _accent; set { if (SetProperty(ref _accent, value)) Push(s => s.Appearance.AccentColor = value); } }
+    public string Accent
+    {
+        get => _accent;
+        set
+        {
+            if (SetProperty(ref _accent, value))
+            {
+                UpdateSwatchSelection();
+                Push(s => s.Appearance.AccentColor = value);
+            }
+        }
+    }
 
     internal static string FormatPx(double value) => string.Create(CultureInfo.CurrentCulture, $"{value:0} px");
 
@@ -291,293 +470,726 @@ public sealed class AppearancePageViewModel : PageViewModel
     }
 }
 
-/// <summary>One accent color button: its own brush and command, so the template needs no ancestor binding.</summary>
-public sealed class AccentSwatchViewModel
+/// <summary>
+/// One accent color button: its own brush, command and selection state, so the template needs no ancestor binding.
+/// </summary>
+public sealed class AccentSwatchViewModel : ObservableObject
 {
-    public AccentSwatchViewModel(string hex, ICommand selectCommand)
+    // Swatches at least this bright get a black check mark, darker ones a white one.
+    private const double LightLuminance = 0.6;
+
+    private bool _isSelected;
+
+    public AccentSwatchViewModel(string name, string hex, ICommand selectCommand)
     {
+        Name = name;
         Hex = hex;
         SelectCommand = selectCommand;
         var c = ColorHex.ParseOrDefault(hex, new ArgbColor(0xFF, 0x80, 0x80, 0x80));
         Brush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(c.A, c.R, c.G, c.B));
+        CheckBrush = new SolidColorBrush(RelativeLuminance(c) >= LightLuminance
+            ? global::Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00)
+            : global::Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF));
     }
+
+    /// <summary>The color's friendly name ("Blue"), for the tooltip and screen readers.</summary>
+    public string Name { get; }
 
     public string Hex { get; }
 
     public SolidColorBrush Brush { get; }
 
+    /// <summary>The check mark's color: readable on this swatch (black on light colors, white on dark ones).</summary>
+    public SolidColorBrush CheckBrush { get; }
+
+    public string AccessibleName => Name;
+
+    /// <summary>True for the swatch of the current accent color.</summary>
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
+
     /// <summary>Selects this color; the command parameter is <see cref="Hex"/>.</summary>
     public ICommand SelectCommand { get; }
+
+    /// <summary>WCAG relative luminance (0 black .. 1 white) of an sRGB color.</summary>
+    private static double RelativeLuminance(ArgbColor c)
+    {
+        static double Linear(byte channel)
+        {
+            var v = channel / 255d;
+            return v <= 0.03928 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
+        }
+
+        return 0.2126 * Linear(c.R) + 0.7152 * Linear(c.G) + 0.0722 * Linear(c.B);
+    }
 }
 
-public sealed class LayoutPageViewModel : PageViewModel
+/// <summary>
+/// The Layout page: the bar's sections in their three zones, in real left-to-right order, moved along the bar one
+/// step at a time or straight into another zone. Follows the settings live (widgets are dragged on the bar while this
+/// page is open) and edits its collections in place, so the button that was just pressed survives a reload.
+/// </summary>
+public sealed class LayoutPageViewModel : PageViewModel, IDisposable
 {
+    // Segoe Fluent Icons. Widgets use their descriptor's glyph.
+    private const string StartGlyph = "\uE8A9";
+    private const string ApplicationsGlyph = "\uECAA";
+    private const string TrayGlyph = "\uE70E";
+
     private readonly ISettingsService _settings;
     private readonly IWidgetRegistry _widgets;
+    private readonly IUiDispatcher _dispatcher;
+    private readonly Dictionary<string, LayoutItemViewModel> _items = new(StringComparer.Ordinal);
+    private string _signature = "";
 
-    public LayoutPageViewModel(ISettingsService settings, IWidgetRegistry widgets)
-        : base("Layout", "\uE8FD", "Order the sections of the bar and choose the zone each one lives in.")
+    public LayoutPageViewModel(ISettingsService settings, IWidgetRegistry widgets, IUiDispatcher dispatcher)
+        : base("Layout", "\uE8FD", "Arrange the bar's sections: their order and the zone each one lives in.")
     {
         _settings = settings;
         _widgets = widgets;
+        _dispatcher = dispatcher;
+        LeftZone = new LayoutZoneViewModel(TaskbarZone.Left, "Left zone", "Starts at the left edge");
+        CenterZone = new LayoutZoneViewModel(TaskbarZone.Center, "Center zone", "Centered on the bar");
+        RightZone = new LayoutZoneViewModel(TaskbarZone.Right, "Right zone", "Anchored to the right edge");
+        Zones = (LayoutZoneViewModel[])[LeftZone, CenterZone, RightZone];
+        _settings.Changed += OnSettingsChanged;
         Reload();
     }
 
-    public ObservableCollection<LayoutItemViewModel> Sections { get; } = new();
+    /// <summary>Always the three zones, Left, Center, Right, created once.</summary>
+    public IReadOnlyList<LayoutZoneViewModel> Zones { get; }
 
-    public IReadOnlyList<TaskbarZone> Zones { get; } = Enum.GetValues<TaskbarZone>();
-
-    /// <summary>Display names of <see cref="Zones"/>, in the same order (indexes match).</summary>
-    public IReadOnlyList<string> ZoneNames { get; } = Enum.GetNames<TaskbarZone>();
+    // The same objects as in Zones, for the preview strip's three bindings (x:Bind cannot index a list).
+    public LayoutZoneViewModel LeftZone { get; }
+    public LayoutZoneViewModel CenterZone { get; }
+    public LayoutZoneViewModel RightZone { get; }
 
     public override void OnNavigatedTo() => Reload();
 
+    private void OnSettingsChanged(object? sender, SettingsChangedEventArgs e) => _dispatcher.Invoke(Reload);
+
+    internal void Shift(LayoutItemViewModel item, int direction)
+    {
+        item.RequestFocus(direction < 0 ? LayoutFocusTarget.Earlier : LayoutFocusTarget.Later);
+        _settings.Update(s => SectionOrdering.Shift(s.Layout, item.Id, direction));
+        Reload();
+        item.SettleFocusRequest();
+    }
+
+    internal void MoveToZone(LayoutItemViewModel item, TaskbarZone zone)
+    {
+        item.RequestFocus(LayoutFocusTarget.More);
+        _settings.Update(s => SectionOrdering.MoveToZone(s.Layout, item.Id, zone));
+        Reload();
+    }
+
+    /// <summary>
+    /// Brings the three zones to the stored layout without clearing them: item view models are reused by placement
+    /// id and each zone's collection is edited with Move / Insert / Remove only.
+    /// </summary>
     private void Reload()
     {
-        Sections.Clear();
         var settings = _settings.Current;
-        foreach (var s in settings.Layout)
+        var layout = settings.Layout;
+        var signature = string.Join("|", layout.Select(p => $"{p.Id}={p.Zone}={p.Kind}={p.WidgetInstanceId}"));
+        if (signature == _signature)
         {
-            Sections.Add(new LayoutItemViewModel(this, s.Id, Describe(s, settings), s.Zone));
+            return;
+        }
+
+        _signature = signature;
+        var live = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var zone in Zones)
+        {
+            var target = new List<LayoutItemViewModel>();
+            foreach (var placement in layout.Where(p => p.Zone == zone.Zone))
+            {
+                if (!_items.TryGetValue(placement.Id, out var item))
+                {
+                    item = new LayoutItemViewModel(this, placement.Id, Describe(placement, settings), GlyphFor(placement, settings));
+                    _items[placement.Id] = item;
+                }
+
+                item.Zone = zone.Zone;
+                target.Add(item);
+                live.Add(placement.Id);
+            }
+
+            zone.SyncItems(target);
+        }
+
+        foreach (var id in _items.Keys.Where(id => !live.Contains(id)).ToList())
+        {
+            _items.Remove(id);
+        }
+
+        foreach (var item in _items.Values)
+        {
+            item.CanMoveEarlier = SectionOrdering.CanShift(layout, item.Id, -1);
+            item.CanMoveLater = SectionOrdering.CanShift(layout, item.Id, +1);
         }
     }
 
     private string Describe(SectionPlacement s, SuperBarSettings settings) => s.Kind switch
     {
         SectionKind.Start => "Start button",
-        SectionKind.Applications => "Applications (pinned and running)",
+        SectionKind.Applications => "Applications",
         SectionKind.SystemTray => "System tray",
-        SectionKind.Clock => "Clock and date",
-        SectionKind.Widget => settings.Widgets.FirstOrDefault(w => w.InstanceId == s.WidgetInstanceId) is { } w && _widgets.TryGet(w.TypeId, out var d)
-            ? $"Widget: {d.DisplayName}"
-            : "Widget",
+        SectionKind.Widget => FindDescriptor(s, settings)?.DisplayName ?? "Widget",
         _ => s.Kind.ToString(),
     };
 
-    internal void Move(LayoutItemViewModel item, int delta)
+    private string GlyphFor(SectionPlacement s, SuperBarSettings settings) => s.Kind switch
     {
-        _settings.Update(s =>
-        {
-            var index = s.Layout.FindIndex(p => p.Id == item.Id);
-            var target = index + delta;
-            if (index < 0 || target < 0 || target >= s.Layout.Count)
-            {
-                return;
-            }
+        SectionKind.Start => StartGlyph,
+        SectionKind.Applications => ApplicationsGlyph,
+        SectionKind.SystemTray => TrayGlyph,
+        _ => FindDescriptor(s, settings)?.Glyph ?? "\uE71D",
+    };
 
-            (s.Layout[index], s.Layout[target]) = (s.Layout[target], s.Layout[index]);
-        });
-        Reload();
-    }
+    private WidgetDescriptor? FindDescriptor(SectionPlacement s, SuperBarSettings settings) =>
+        settings.Widgets.FirstOrDefault(w => w.InstanceId == s.WidgetInstanceId) is { } w && _widgets.TryGet(w.TypeId, out var d)
+            ? d
+            : null;
 
-    internal void SetZone(LayoutItemViewModel item, TaskbarZone zone) =>
-        _settings.Update(s =>
-        {
-            if (s.Layout.FirstOrDefault(p => p.Id == item.Id) is { } placement)
-            {
-                placement.Zone = zone;
-            }
-        });
+    public void Dispose() => _settings.Changed -= OnSettingsChanged;
 }
 
+/// <summary>One zone of the bar on the Layout page: a board column and a third of the preview strip.</summary>
+public sealed class LayoutZoneViewModel(TaskbarZone zone, string title, string description) : ObservableObject
+{
+    private bool _isEmpty = true;
+    private string _countLabel = "No items";
+
+    public TaskbarZone Zone { get; } = zone;
+
+    public string Title { get; } = title;
+
+    public string Description { get; } = description;
+
+    /// <summary>The zone's sections, top to bottom = left to right on the bar. Edited in place, never cleared.</summary>
+    public ObservableCollection<LayoutItemViewModel> Items { get; } = new();
+
+    public bool IsEmpty
+    {
+        get => _isEmpty;
+        private set => SetProperty(ref _isEmpty, value);
+    }
+
+    public string CountLabel
+    {
+        get => _countLabel;
+        private set => SetProperty(ref _countLabel, value);
+    }
+
+    /// <summary>
+    /// Brings <see cref="Items"/> to <paramref name="target"/> in place (see <see cref="ObservableCollectionSync.SyncTo"/>),
+    /// so items that stay put keep their containers (and focus).
+    /// </summary>
+    internal void SyncItems(IReadOnlyList<LayoutItemViewModel> target)
+    {
+        Items.SyncTo(target);
+        IsEmpty = Items.Count == 0;
+        CountLabel = Items.Count switch
+        {
+            0 => "No items",
+            1 => "1 item",
+            var n => string.Create(CultureInfo.CurrentCulture, $"{n} items"),
+        };
+    }
+}
+
+/// <summary>Which of an item's buttons should take keyboard focus once its row has been re-created after a move.</summary>
+internal enum LayoutFocusTarget
+{
+    None,
+    Earlier,
+    Later,
+    More,
+}
+
+/// <summary>One section on the Layout page, with its own commands (templates have no ancestor bindings).</summary>
 public sealed class LayoutItemViewModel : ObservableObject
 {
+    // A row re-created later than this after a move is not the result of that move.
+    private static readonly TimeSpan FocusRequestLifetime = TimeSpan.FromSeconds(1);
+
     private readonly LayoutPageViewModel _owner;
     private TaskbarZone _zone;
+    private bool _canMoveEarlier;
+    private bool _canMoveLater;
+    private LayoutFocusTarget _focusRequest;
+    private long _focusRequestedAt;
 
-    public LayoutItemViewModel(LayoutPageViewModel owner, string id, string name, TaskbarZone zone)
+    public LayoutItemViewModel(LayoutPageViewModel owner, string id, string name, string glyph)
     {
         _owner = owner;
         Id = id;
         Name = name;
-        _zone = zone;
-        MoveUpCommand = new RelayCommand(() => _owner.Move(this, -1));
-        MoveDownCommand = new RelayCommand(() => _owner.Move(this, +1));
+        Glyph = glyph;
+        MoveEarlierCommand = new RelayCommand(() => _owner.Shift(this, -1));
+        MoveLaterCommand = new RelayCommand(() => _owner.Shift(this, +1));
+        MoveToLeftCommand = new RelayCommand(() => _owner.MoveToZone(this, TaskbarZone.Left));
+        MoveToCenterCommand = new RelayCommand(() => _owner.MoveToZone(this, TaskbarZone.Center));
+        MoveToRightCommand = new RelayCommand(() => _owner.MoveToZone(this, TaskbarZone.Right));
     }
 
+    /// <summary>The layout entry's placement id.</summary>
     public string Id { get; }
+
     public string Name { get; }
-    public ICommand MoveUpCommand { get; }
-    public ICommand MoveDownCommand { get; }
 
-    /// <summary>The zones this section can be placed in (exposed per item, so the ComboBox needs no ancestor binding).</summary>
-    public IReadOnlyList<string> Zones => _owner.ZoneNames;
+    /// <summary>Segoe Fluent Icons code point.</summary>
+    public string Glyph { get; }
 
-    /// <summary>Index of <see cref="Zone"/> in <see cref="Zones"/>; bound two-way to the ComboBox.</summary>
-    public int ZoneIndex
+    public string MoveEarlierName => $"Move {Name} earlier (left)";
+
+    public string MoveLaterName => $"Move {Name} later (right)";
+
+    public string MoveToZoneName => $"Move {Name} to zone";
+
+    public ICommand MoveEarlierCommand { get; }
+    public ICommand MoveLaterCommand { get; }
+    public ICommand MoveToLeftCommand { get; }
+    public ICommand MoveToCenterCommand { get; }
+    public ICommand MoveToRightCommand { get; }
+
+    public bool CanMoveEarlier
     {
-        get => IndexOf(_owner.Zones, _zone);
-        set
-        {
-            var zones = _owner.Zones;
-            if (value >= 0 && value < zones.Count)
-            {
-                Zone = zones[value];
-            }
-        }
+        get => _canMoveEarlier;
+        internal set => SetProperty(ref _canMoveEarlier, value);
     }
 
-    private static int IndexOf(IReadOnlyList<TaskbarZone> zones, TaskbarZone zone)
+    public bool CanMoveLater
     {
-        for (var i = 0; i < zones.Count; i++)
-        {
-            if (zones[i] == zone)
-            {
-                return i;
-            }
-        }
-
-        return -1;
+        get => _canMoveLater;
+        internal set => SetProperty(ref _canMoveLater, value);
     }
 
     public TaskbarZone Zone
     {
         get => _zone;
-        set
+        internal set
         {
             if (SetProperty(ref _zone, value))
             {
-                OnPropertyChanged(nameof(ZoneIndex));
-                _owner.SetZone(this, value);
+                OnPropertyChanged(nameof(IsInLeft));
+                OnPropertyChanged(nameof(IsInCenter));
+                OnPropertyChanged(nameof(IsInRight));
+                OnPropertyChanged(nameof(CanMoveToLeft));
+                OnPropertyChanged(nameof(CanMoveToCenter));
+                OnPropertyChanged(nameof(CanMoveToRight));
             }
         }
     }
+
+    public bool IsInLeft => _zone == TaskbarZone.Left;
+    public bool IsInCenter => _zone == TaskbarZone.Center;
+    public bool IsInRight => _zone == TaskbarZone.Right;
+
+    // The zone menu's items: the current zone is disabled.
+    public bool CanMoveToLeft => !IsInLeft;
+    public bool CanMoveToCenter => !IsInCenter;
+    public bool CanMoveToRight => !IsInRight;
+
+    internal void RequestFocus(LayoutFocusTarget target)
+    {
+        _focusRequest = target;
+        _focusRequestedAt = Environment.TickCount64;
+    }
+
+    /// <summary>After a move: an arrow that just became disabled (the item reached an end of the bar) hands focus to the other one.</summary>
+    internal void SettleFocusRequest()
+    {
+        if (_focusRequest == LayoutFocusTarget.Earlier && !CanMoveEarlier)
+        {
+            _focusRequest = LayoutFocusTarget.Later;
+        }
+        else if (_focusRequest == LayoutFocusTarget.Later && !CanMoveLater)
+        {
+            _focusRequest = LayoutFocusTarget.Earlier;
+        }
+    }
+
+    /// <summary>
+    /// Called by the view when one of this item's buttons is loaded: true (once) when that button should take focus,
+    /// because the row was re-created by a move the user started from it.
+    /// </summary>
+    internal bool TakeFocusRequest(LayoutFocusTarget target)
+    {
+        if (_focusRequest != target || Environment.TickCount64 - _focusRequestedAt > FocusRequestLifetime.TotalMilliseconds)
+        {
+            return false;
+        }
+
+        _focusRequest = LayoutFocusTarget.None;
+        return true;
+    }
 }
 
-public sealed class WidgetsPageViewModel : PageViewModel
+public sealed class ApplicationsPageViewModel : PageViewModel, IDisposable
 {
+    private const int IconPixelSize = 64; // crisp at 200% for the 32 DIP icon
+
     private readonly ISettingsService _settings;
-    private readonly IWidgetRegistry _registry;
+    private readonly IIconProvider _icons;
+    private readonly IWindowTracker _tracker;
+    private readonly IControlCenterUi _ui;
     private readonly IUiDispatcher _dispatcher;
+    private readonly Dictionary<string, ImageSource?> _iconCache = new(StringComparer.OrdinalIgnoreCase);
+    private string _signature = "";
 
-    public WidgetsPageViewModel(ISettingsService settings, IWidgetRegistry registry, IUiDispatcher dispatcher)
-        : base("Widgets", "\uE71D", "Widgets live directly inside the bar. Enable them and size their slots.")
+    public ApplicationsPageViewModel(
+        ISettingsService settings,
+        IIconProvider icons,
+        IWindowTracker tracker,
+        IControlCenterUi ui,
+        IUiDispatcher dispatcher)
+        : base("Applications", "\uECAA", "Applications pinned to the bar. Drag them on the bar to reorder.")
     {
         _settings = settings;
-        _registry = registry;
+        _icons = icons;
+        _tracker = tracker;
+        _ui = ui;
         _dispatcher = dispatcher;
+        _settings.Changed += OnSettingsChanged;
         Reload();
     }
 
-    public ObservableCollection<WidgetItemViewModel> Instances { get; } = new();
+    public ObservableCollection<PinnedAppItemViewModel> Pinned { get; } = new();
 
-    public IReadOnlyList<WidgetDescriptor> AvailableTypes => _registry.All.ToList();
-
-    /// <summary>Bulleted names of <see cref="AvailableTypes"/>.</summary>
-    public IReadOnlyList<string> AvailableTypeLabels => _registry.All.Select(d => $"• {d.DisplayName}").ToList();
+    public bool IsEmpty => Pinned.Count == 0;
 
     public override void OnNavigatedTo() => Reload();
 
-    private void Reload()
+    /// <summary>
+    /// Running applications that can be pinned and are not pinned yet, one per executable, by name. Empty while the
+    /// window tracker has not been started (it starts with the bar), so callers must cope with an empty list.
+    /// </summary>
+    public IReadOnlyList<RunningAppViewModel> GetRunningApps()
     {
-        Instances.Clear();
-        foreach (var w in _settings.Current.Widgets)
+        var pinned = _settings.Current.PinnedApps.Select(p => AppOrdering.PinKey(p.Path)).ToHashSet(StringComparer.Ordinal);
+        if (Environment.ProcessPath is { } self)
         {
-            if (_registry.TryGet(w.TypeId, out var d))
+            pinned.Add(AppOrdering.PinKey(self));
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var apps = new List<RunningAppViewModel>();
+        foreach (var window in _tracker.Windows.ToList())
+        {
+            if (window.ProcessPath is not { Length: > 0 } path || !AppIdentity.IsPinnable(path))
             {
-                Instances.Add(new WidgetItemViewModel(_settings, _dispatcher, w.InstanceId, d, w.Enabled, d.ResolveWidth(w.Width)));
+                continue;
+            }
+
+            var key = AppOrdering.PinKey(path);
+            if (pinned.Contains(key) || !seen.Add(key))
+            {
+                continue;
+            }
+
+            apps.Add(new RunningAppViewModel(path, AppIdentity.FriendlyName(path, Path.GetFileNameWithoutExtension(path)), IconFor(path)));
+        }
+
+        return apps.OrderBy(a => a.DisplayName, StringComparer.CurrentCulture).ToList();
+    }
+
+    /// <summary>Pins the executable at the end of the pinned apps; a path that is already pinned is ignored.</summary>
+    public void Pin(string path) =>
+        _settings.Update(s => AppOrdering.AddPin(
+            s.PinnedApps,
+            new PinnedApp { DisplayName = AppIdentity.FriendlyName(path, Path.GetFileNameWithoutExtension(path)), Path = path },
+            int.MaxValue));
+
+    /// <summary>Lets the user choose an .exe and pins it.</summary>
+    public async void BrowseAndPin()
+    {
+        try
+        {
+            var path = await _ui.PickExecutableAsync();
+            if (path is not null && AppIdentity.IsPinnable(path))
+            {
+                Pin(path);
             }
         }
+        catch (Exception)
+        {
+            // async void: nothing may escape. A picker that fails to open pins nothing.
+        }
     }
+
+    // Pins change from the bar (Pin / Unpin, drag to reorder) while this page is open: follow live.
+    private void OnSettingsChanged(object? sender, SettingsChangedEventArgs e) => _dispatcher.Invoke(Reload);
+
+    private void Reload()
+    {
+        var pins = _settings.Current.PinnedApps;
+        var signature = string.Join("|", pins.Select(p => p.Id + "=" + p.Path + "=" + p.DisplayName));
+        if (signature == _signature)
+        {
+            return;
+        }
+
+        _signature = signature;
+        Pinned.Clear();
+        foreach (var p in pins)
+        {
+            Pinned.Add(new PinnedAppItemViewModel(p, IconFor(p.Path), Unpin));
+        }
+
+        OnPropertyChanged(nameof(IsEmpty));
+    }
+
+    private ImageSource? IconFor(string path)
+    {
+        if (!_iconCache.TryGetValue(path, out var icon))
+        {
+            icon = IconImages.ToBitmap(_icons.GetFileIcon(path, IconPixelSize));
+            _iconCache[path] = icon;
+        }
+
+        return icon;
+    }
+
+    private void Unpin(PinnedAppItemViewModel item) =>
+        _settings.Update(s => s.PinnedApps.RemoveAll(p => p.Id == item.Id));
+
+    public void Dispose() => _settings.Changed -= OnSettingsChanged;
 }
 
-public sealed class WidgetItemViewModel : ObservableObject
+/// <summary>A running application offered by "Pin application".</summary>
+public sealed class RunningAppViewModel(string path, string displayName, ImageSource? icon)
 {
-    private readonly ISettingsService _settings;
-    private readonly Debouncer _debounce;
-    private bool _enabled;
-    private double _width;
+    public string Path { get; } = path;
 
-    public WidgetItemViewModel(ISettingsService settings, IUiDispatcher dispatcher, string instanceId, WidgetDescriptor descriptor, bool enabled, double width)
+    public string DisplayName { get; } = displayName;
+
+    public ImageSource? Icon { get; } = icon;
+}
+
+/// <summary>One pinned application on the Applications page.</summary>
+public sealed class PinnedAppItemViewModel
+{
+    public PinnedAppItemViewModel(PinnedApp pin, ImageSource? icon, Action<PinnedAppItemViewModel> unpin)
+    {
+        Id = pin.Id;
+        DisplayName = string.IsNullOrWhiteSpace(pin.DisplayName) ? Path.GetFileNameWithoutExtension(pin.Path) : pin.DisplayName;
+        AppPath = pin.Path;
+        Icon = icon;
+        IsMissing = !File.Exists(pin.Path);
+        UnpinCommand = new RelayCommand(() => unpin(this));
+        UnpinName = $"Unpin {DisplayName}";
+    }
+
+    public string Id { get; }
+
+    public string DisplayName { get; }
+
+    /// <summary>The executable's full path; shown only as the card's tooltip.</summary>
+    public string AppPath { get; }
+
+    public ImageSource? Icon { get; }
+
+    public bool HasIcon => Icon is not null;
+
+    /// <summary>Shown instead of the icon when the executable is missing or has none.</summary>
+    public bool ShowFallbackIcon => Icon is null;
+
+    /// <summary>The executable no longer exists (uninstalled or moved); the card shows a "Missing" pill.</summary>
+    public bool IsMissing { get; }
+
+    public string UnpinName { get; }
+
+    public ICommand UnpinCommand { get; }
+}
+
+public sealed class AboutPageViewModel : PageViewModel, IDisposable
+{
+    private const string CopyGlyphIdle = "\uE8C8";
+    private const string CopyGlyphDone = "\uE73E";
+
+    private readonly ISettingsService _settings;
+    private readonly INativeTaskbarController _nativeTaskbar;
+    private readonly IUpdateService _updates;
+    private readonly IControlCenterUi _ui;
+    private readonly IUiDispatcher _dispatcher;
+    private readonly Debouncer _copiedReset;
+    private UpdateState _update;
+    private bool _isCopied;
+    private string _restoreStatus = "";
+
+    public AboutPageViewModel(
+        IAppPaths paths,
+        IAppLauncher launcher,
+        ISettingsService settings,
+        INativeTaskbarController nativeTaskbar,
+        IUpdateService updates,
+        IControlCenterUi ui,
+        IUiDispatcher dispatcher)
+        : base("About", "\uE946", "Version, updates, data locations and diagnostics.")
     {
         _settings = settings;
-        _debounce = new Debouncer(dispatcher, TimeSpan.FromMilliseconds(120));
-        InstanceId = instanceId;
-        Descriptor = descriptor;
-        _enabled = enabled;
-        _width = width;
-    }
-
-    public string InstanceId { get; }
-    public WidgetDescriptor Descriptor { get; }
-    public string DisplayName => Descriptor.DisplayName;
-    public string Description => Descriptor.Description;
-    public double MinWidth => Descriptor.MinWidth;
-    public double MaxWidth => Descriptor.MaxWidth;
-
-    public bool Enabled
-    {
-        get => _enabled;
-        set
-        {
-            if (SetProperty(ref _enabled, value))
-            {
-                _settings.Update(s => Find(s)!.Enabled = value);
-            }
-        }
-    }
-
-    public double Width
-    {
-        get => _width;
-        set
-        {
-            if (SetProperty(ref _width, Math.Round(value)))
-            {
-                OnPropertyChanged(nameof(WidthLabel));
-                var w = _width;
-                _debounce.Run(() => _settings.Update(s => Find(s)!.Width = w));
-            }
-        }
-    }
-
-    public string WidthLabel => AppearancePageViewModel.FormatPx(_width);
-
-    private WidgetInstanceSettings? Find(SuperBarSettings s) => s.Widgets.FirstOrDefault(x => x.InstanceId == InstanceId);
-}
-
-public sealed class ApplicationsPageViewModel : PageViewModel
-{
-    public ApplicationsPageViewModel(ISettingsService settings)
-        : base("Applications", "\uECAA", "Pinned applications shown on the bar.")
-    {
-        Settings = settings;
-        Reload();
-    }
-
-    private ISettingsService Settings { get; }
-
-    public ObservableCollection<PinnedApp> Pinned { get; } = new();
-
-    public override void OnNavigatedTo() => Reload();
-
-    private void Reload()
-    {
-        Pinned.Clear();
-        foreach (var p in Settings.Current.PinnedApps)
-        {
-            Pinned.Add(p);
-        }
-    }
-}
-
-public sealed class AboutPageViewModel : PageViewModel
-{
-    public AboutPageViewModel(IAppPaths paths, IAppLauncher launcher)
-        : base("About", "\uE946", "Version, data locations and diagnostics.")
-    {
+        _nativeTaskbar = nativeTaskbar;
+        _updates = updates;
+        _ui = ui;
+        _dispatcher = dispatcher;
+        _update = updates.State;
+        updates.StateChanged += OnUpdateStateChanged;
+        Version = updates.CurrentVersion;
+        CheckForUpdatesCommand = new RelayCommand(CheckForUpdates);
+        DownloadUpdateCommand = new RelayCommand(DownloadUpdate);
+        RestartToUpdateCommand = new RelayCommand(updates.ApplyUpdateAndRestart);
+        _copiedReset = new Debouncer(dispatcher, TimeSpan.FromMilliseconds(1500));
         DataDirectory = paths.DataDirectory;
         LogDirectory = paths.LogDirectory;
         OpenDataFolderCommand = new RelayCommand(() => launcher.Launch(paths.DataDirectory));
         OpenLogFolderCommand = new RelayCommand(() => launcher.Launch(paths.LogDirectory));
+        CopyRestoreCommand = new RelayCommand(CopyRestore);
+        RestoreTaskbarCommand = new RelayCommand(RestoreTaskbar);
     }
 
-    public string Version { get; } = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.1.0";
+    /// <summary>The app icon of the hero card, decoded for the 56 px <c>HeroIcon</c> style; null if the file is missing.</summary>
+    public ImageSource? AppIcon { get; } = AppAssets.LoadImage(56);
+
+    /// <summary>The running version, e.g. "0.1.0".</summary>
+    public string Version { get; }
+    public string VersionPill => "v" + Version;
+    public string Tagline => "A modern replacement for the Windows taskbar. Foundation milestone.";
     public string DataDirectory { get; }
     public string LogDirectory { get; }
-    public string VersionLabel => $"SuperBar {Version} - foundation milestone";
     public string DataDirectoryLabel => $"Data: {DataDirectory}";
     public string LogDirectoryLabel => $"Logs: {LogDirectory}";
     public ICommand OpenDataFolderCommand { get; }
     public ICommand OpenLogFolderCommand { get; }
+
+    /// <summary>The command line that brings a stuck Windows taskbar back.</summary>
+    public string RestoreCommandText => "SuperBar.exe --restore-taskbar";
+
+    /// <summary>Copies <see cref="RestoreCommandText"/>; the button shows a check mark for a moment.</summary>
+    public ICommand CopyRestoreCommand { get; }
+
+    /// <summary>True for a short while after <see cref="CopyRestoreCommand"/>.</summary>
+    public bool IsCopied
+    {
+        get => _isCopied;
+        private set
+        {
+            if (SetProperty(ref _isCopied, value))
+            {
+                OnPropertyChanged(nameof(CopyGlyph));
+            }
+        }
+    }
+
+    public string CopyGlyph => _isCopied ? CopyGlyphDone : CopyGlyphIdle;
+
+    /// <summary>Brings the Windows taskbar back now and turns "Hide the Windows taskbar" off. No confirmation: the safe direction.</summary>
+    public ICommand RestoreTaskbarCommand { get; }
+
+    /// <summary>What the last <see cref="RestoreTaskbarCommand"/> did; empty until it runs.</summary>
+    public string RestoreStatus
+    {
+        get => _restoreStatus;
+        private set
+        {
+            if (SetProperty(ref _restoreStatus, value))
+            {
+                OnPropertyChanged(nameof(HasRestoreStatus));
+            }
+        }
+    }
+
+    public bool HasRestoreStatus => _restoreStatus.Length > 0;
+
+    // ----- Updates -----
+
+    public ICommand CheckForUpdatesCommand { get; }
+
+    public ICommand DownloadUpdateCommand { get; }
+
+    /// <summary>Closes SuperBar (the Windows taskbar comes back), installs the downloaded update and starts the new version.</summary>
+    public ICommand RestartToUpdateCommand { get; }
+
+    /// <summary>One line: where the updater stands.</summary>
+    public string UpdateStatus => _update.Phase switch
+    {
+        UpdatePhase.NotInstalled => "Development build \u2014 auto-updates require the installed app.",
+        UpdatePhase.Checking => "Checking for updates\u2026",
+        UpdatePhase.UpToDate => $"Up to date. v{Version} is the latest version.",
+        UpdatePhase.UpdateAvailable => $"Update v{_update.AvailableVersion} available. You have v{Version}.",
+        UpdatePhase.Downloading => $"Downloading v{_update.AvailableVersion}\u2026 {_update.DownloadProgress}%",
+        UpdatePhase.ReadyToRestart => $"Ready to restart. v{_update.AvailableVersion} is installed when SuperBar restarts; the Windows taskbar shows for a moment.",
+        UpdatePhase.Failed when _update.AvailableVersion is null => $"Could not check for updates. {_update.Error}",
+        UpdatePhase.Failed => $"Could not update to v{_update.AvailableVersion}. {_update.Error}",
+        _ => $"v{Version} is installed.",
+    };
+
+    public bool CanCheckForUpdates => _update.Phase is UpdatePhase.Idle or UpdatePhase.UpToDate or UpdatePhase.UpdateAvailable or UpdatePhase.Failed;
+
+    /// <summary>A newer version is known and not downloaded yet (also after a failed download: the button retries).</summary>
+    public bool IsDownloadAvailable => _update is { Phase: UpdatePhase.UpdateAvailable } or { Phase: UpdatePhase.Failed, AvailableVersion: not null };
+
+    public bool IsRestartReady => _update.Phase == UpdatePhase.ReadyToRestart;
+
+    public bool IsCheckingForUpdates => _update.Phase == UpdatePhase.Checking;
+
+    /// <summary>Checking or downloading: the progress bar shows.</summary>
+    public bool IsUpdateBusy => _update.Phase is UpdatePhase.Checking or UpdatePhase.Downloading;
+
+    /// <summary>0 to 100 while downloading.</summary>
+    public double DownloadProgress => _update.DownloadProgress;
+
+    /// <summary>Opening the page asks the update feed once per session; after that the button does.</summary>
+    public override void OnNavigatedTo()
+    {
+        if (_update.Phase == UpdatePhase.Idle)
+        {
+            CheckForUpdates();
+        }
+    }
+
+    // The update service never throws from these and reports through StateChanged.
+    private async void CheckForUpdates() => await _updates.CheckForUpdatesAsync();
+
+    private async void DownloadUpdate() => await _updates.DownloadUpdatesAsync();
+
+    // Raised on any thread (download progress comes from the thread pool).
+    private void OnUpdateStateChanged(object? sender, EventArgs e) => _dispatcher.Invoke(() =>
+    {
+        _update = _updates.State;
+        OnPropertyChanged(nameof(UpdateStatus));
+        OnPropertyChanged(nameof(CanCheckForUpdates));
+        OnPropertyChanged(nameof(IsDownloadAvailable));
+        OnPropertyChanged(nameof(IsRestartReady));
+        OnPropertyChanged(nameof(IsCheckingForUpdates));
+        OnPropertyChanged(nameof(IsUpdateBusy));
+        OnPropertyChanged(nameof(DownloadProgress));
+    });
+
+    public void Dispose() => _updates.StateChanged -= OnUpdateStateChanged;
+
+    private void CopyRestore()
+    {
+        _ui.CopyText(RestoreCommandText);
+        IsCopied = true;
+        _copiedReset.Run(() => IsCopied = false);
+    }
+
+    private void RestoreTaskbar()
+    {
+        // Turning the setting off is what makes the runtime restore the taskbar and move the bar off it; calling the
+        // controller alone would leave the setting on and the bar overlapping the taskbar.
+        if (_settings.Current.Behavior.HideNativeTaskbar)
+        {
+            _settings.Update(s => s.Behavior.HideNativeTaskbar = false);
+        }
+
+        // Idempotent; also covers a taskbar left hidden while SuperBar is paused.
+        _nativeTaskbar.Restore();
+        RestoreStatus = "The Windows taskbar is back. 'Hide the Windows taskbar' is now off; turn it on again under General.";
+    }
 }

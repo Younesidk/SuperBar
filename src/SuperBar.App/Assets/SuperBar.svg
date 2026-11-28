@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <title>SuperBar</title>
+  <defs>
+    <linearGradient id="a-plate" x1="44" y1="36" x2="212" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#55CDFF"/>
+      <stop offset=".48" stop-color="#1E90F3"/>
+      <stop offset="1" stop-color="#1355CC"/>
+    </linearGradient>
+    <linearGradient id="a-rim" x1="128" y1="36" x2="128" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".62"/>
+      <stop offset=".32" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset=".7" stop-color="#062B7A" stop-opacity="0"/>
+      <stop offset="1" stop-color="#062B7A" stop-opacity=".38"/>
+    </linearGradient>
+    <linearGradient id="a-sheet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity=".12"/>
+    </linearGradient>
+    <linearGradient id="a-dock" x1="128" y1="150" x2="128" y2="202" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DCEAFF"/>
+    </linearGradient>
+    <linearGradient id="a-app1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2B7BF0"/>
+      <stop offset="1" stop-color="#0F45B8"/>
+    </linearGradient>
+    <linearGradient id="a-app2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3DB4FA"/>
+      <stop offset="1" stop-color="#1A8AE6"/>
+    </linearGradient>
+    <linearGradient id="a-app3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7FDFFF"/>
+      <stop offset="1" stop-color="#3FBCF2"/>
+    </linearGradient>
+    <linearGradient id="a-status" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2450C4"/>
+      <stop offset="1" stop-color="#14308F"/>
+    </linearGradient>
+    <clipPath id="a-clip"><rect x="20" y="36" width="216" height="184" rx="40"/></clipPath>
+    <filter id="a-blur" x="-20%" y="-80%" width="140%" height="260%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <filter id="a-blur-sm" x="-20%" y="-30%" width="140%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+  </defs>
+
+  <!-- Desktop plate -->
+  <rect x="20" y="36" width="216" height="184" rx="40" fill="url(#a-plate)"/>
+
+  <g clip-path="url(#a-clip)">
+    <!-- Two app windows resting on the desktop -->
+    <rect x="48" y="62" width="108" height="70" rx="14" fill="#0A3C9E" fill-opacity=".28" filter="url(#a-blur-sm)" transform="translate(0 5)"/>
+    <rect x="48" y="62" width="108" height="70" rx="14" fill="url(#a-sheet)"/>
+    <rect x="48.75" y="62.75" width="106.5" height="68.5" rx="13.25" stroke="#FFFFFF" stroke-opacity=".38" stroke-width="1.5"/>
+    <rect x="124" y="80" width="84" height="52" rx="12" fill="#0A3C9E" fill-opacity=".3" filter="url(#a-blur-sm)" transform="translate(0 5)"/>
+    <rect x="124" y="80" width="84" height="52" rx="12" fill="#6CCBFF"/>
+    <rect x="124" y="80" width="84" height="52" rx="12" fill="url(#a-sheet)"/>
+    <rect x="124.75" y="80.75" width="82.5" height="50.5" rx="11.25" stroke="#FFFFFF" stroke-opacity=".45" stroke-width="1.5"/>
+
+    <!-- Dock shadow, cast on the plate -->
+    <rect x="38" y="150" width="180" height="52" rx="18" fill="#082C80" fill-opacity=".5" filter="url(#a-blur)" transform="translate(0 7)"/>
+  </g>
+
+  <!-- Plate rim: top light, bottom shade -->
+  <rect x="21.5" y="37.5" width="213" height="181" rx="38.5" stroke="url(#a-rim)" stroke-width="3"/>
+
+  <!-- Floating dock -->
+  <rect x="38" y="150" width="180" height="52" rx="18" fill="url(#a-dock)"/>
+  <rect x="49" y="161" width="30" height="30" rx="9" fill="url(#a-app1)"/>
+  <rect x="84" y="161" width="30" height="30" rx="9" fill="url(#a-app2)"/>
+  <rect x="119" y="161" width="30" height="30" rx="9" fill="url(#a-app3)"/>
+  <rect x="165" y="161" width="42" height="30" rx="15" fill="url(#a-status)"/>
+  <circle cx="179" cy="176" r="4" fill="#7FDFFF"/>
+  <rect x="187" y="173" width="12" height="6" rx="3" fill="#FFFFFF" fill-opacity=".92"/>
+</svg>

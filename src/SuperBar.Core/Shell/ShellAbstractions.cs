@@ -110,7 +110,15 @@ public interface IShellEvents
 }
 
 /// <summary>A top-level window that would appear on a taskbar.</summary>
-public sealed record TrackedWindow(nint Handle, string Title, int ProcessId, string? ProcessPath);
+/// <param name="IsFlashing">The window asked for attention (FlashWindowEx) and has not been activated since.</param>
+/// <param name="OverlayIcon">The badge the app put on its taskbar button (ITaskbarList3::SetOverlayIcon), if any.</param>
+public sealed record TrackedWindow(
+    nint Handle,
+    string Title,
+    int ProcessId,
+    string? ProcessPath,
+    bool IsFlashing = false,
+    IconPixels? OverlayIcon = null);
 
 public interface IWindowTracker
 {
@@ -119,7 +127,7 @@ public interface IWindowTracker
     /// <summary>The most recently activated tracked window (SuperBar's own windows are ignored).</summary>
     nint ActiveWindow { get; }
 
-    /// <summary>Raised when windows are added, removed, retitled or activated.</summary>
+    /// <summary>Raised when windows are added, removed, retitled, activated, start flashing or change their badge.</summary>
     event EventHandler? WindowsChanged;
 
     void Start();
@@ -134,6 +142,32 @@ public interface IWindowSwitcher
     void ActivateOrMinimize(nint windowHandle, bool isActive);
 
     void Activate(nint windowHandle);
+
+    /// <summary>Asks the window to close, as the taskbar's "Close window" does (the app may prompt or refuse).</summary>
+    void Close(nint windowHandle);
+}
+
+/// <summary>The mouse pointer's position on screen, in physical pixels.</summary>
+public interface ICursorService
+{
+    bool TryGetPosition(out int x, out int y);
+}
+
+/// <summary>Live DWM thumbnails of other windows, drawn into one of SuperBar's own windows.</summary>
+public interface IWindowThumbnailService
+{
+    /// <summary>Registers a thumbnail of <paramref name="sourceWindow"/> inside <paramref name="destinationWindow"/>; null when DWM refuses.</summary>
+    IWindowThumbnail? Create(nint destinationWindow, nint sourceWindow);
+}
+
+/// <summary>One registered thumbnail. Dispose to unregister it.</summary>
+public interface IWindowThumbnail : IDisposable
+{
+    /// <summary>The source window's size in physical pixels; empty when unknown.</summary>
+    PixelSize SourceSize { get; }
+
+    /// <summary>Draws the thumbnail at <paramref name="destination"/>: physical pixels relative to the destination window's client area.</summary>
+    void Show(ScreenRect destination);
 }
 
 public interface IAppLauncher
@@ -153,9 +187,16 @@ public interface IIconProvider
 /// <summary>Shell surfaces that SuperBar opens rather than re-implements.</summary>
 public interface IShellCommands
 {
-    void OpenStartMenu();
-    void OpenNotificationCenter();
-    void OpenQuickSettings();
+    /// <summary>Opens Start, or closes it when it is already open (including when the click on the bar is what dismissed it).</summary>
+    void ToggleStartMenu();
+
+    /// <summary>Opens or closes Explorer's "hidden icons" notification-area flyout next to the bar.</summary>
+    void ToggleTrayOverflow();
+    /// <summary>Opens or closes the Windows notification center / calendar flyout.</summary>
+    void ToggleNotificationCenter();
+
+    /// <summary>Opens or closes the Windows Quick Settings flyout.</summary>
+    void ToggleQuickSettings();
     void OpenTaskManager();
 }
 
@@ -179,11 +220,57 @@ public interface IWindowChrome
     /// (so the AppBar can size it down to <c>AppearanceSettings.MinHeight</c> at any DPI).
     /// The window stays activatable, so clicks, flyouts and <c>SetForegroundWindow</c> keep working.
     /// </summary>
-    void ApplyShellSurfaceStyle(nint windowHandle);
+    /// <param name="roundedCorners">Keep the Windows 11 rounded corners and outline, for popups such as the window preview.</param>
+    void ApplyShellSurfaceStyle(nint windowHandle, bool roundedCorners = false);
 
     /// <summary>Shows the window without activating it or stealing focus (SW_SHOWNOACTIVATE).</summary>
     void ShowWithoutActivation(nint windowHandle);
 
+    /// <summary>
+    /// Sets the whole window's opacity (0..1), content, backdrop, DWM thumbnails and outline included. Used to animate
+    /// popups. The window becomes a layered window on first use.
+    /// </summary>
+    void SetOpacity(nint windowHandle, double opacity);
+
+    /// <summary>Moves the window without resizing, activating or reordering it (physical pixels).</summary>
+    void MoveTo(nint windowHandle, int x, int y);
+
     /// <summary>The window's DPI scale (1.0 = 96 DPI).</summary>
     double GetScale(nint windowHandle);
+
+    /// <summary>
+    /// Gives the window its large and small icon (<c>WM_SETICON</c>, <c>ICON_BIG</c> and <c>ICON_SMALL</c>) from an
+    /// .ico file, each loaded at the exact size the window's DPI calls for. The title bar and Alt+Tab read these.
+    /// </summary>
+    /// <param name="iconPath">Absolute path of the .ico file.</param>
+    /// <returns><see langword="false"/> when the file could not be loaded at either size.</returns>
+    bool SetWindowIcon(nint windowHandle, string iconPath);
+}
+
+/// <summary>What a Bluetooth device is, as far as its icon is concerned.</summary>
+public enum BluetoothDeviceKind
+{
+    Unknown,
+    Headphones,
+    Earbuds,
+    Mouse,
+    Keyboard,
+    Gamepad,
+    Speaker,
+}
+
+/// <summary>A connected Bluetooth device that reports its battery level. <paramref name="Id"/> is its PnP container id.</summary>
+public sealed record BluetoothBatteryDevice(string Id, string Name, int BatteryPercent, BluetoothDeviceKind Kind);
+
+/// <summary>
+/// Battery levels of the connected Bluetooth devices (Classic and LE) that report one, as Windows itself knows them
+/// (the same values as Settings → Bluetooth &amp; devices). Never connects to a device. Safe to call from any thread.
+/// </summary>
+public interface IBluetoothBatteryService
+{
+    /// <summary>
+    /// One entry per connected device that reports a 0..100 battery level, lowest level first, then by name.
+    /// Empty when there is no radio, Bluetooth is off or nothing is connected; never throws for those.
+    /// </summary>
+    Task<IReadOnlyList<BluetoothBatteryDevice>> GetConnectedDevicesAsync(CancellationToken cancellationToken);
 }

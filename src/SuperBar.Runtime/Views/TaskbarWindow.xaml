@@ -106,7 +106,8 @@
       <DataTemplate x:Key="StartTemplate" x:DataType="vm:StartSectionViewModel">
         <Button Style="{StaticResource SbItemButton}"
                 Width="{Binding ItemSize, Source={StaticResource SB.Theme}}"
-                Command="{x:Bind OpenStartCommand}"
+                Command="{x:Bind ToggleStartCommand}"
+                ClickMode="Press"
                 ToolTipService.ToolTip="Start"
                 AutomationProperties.Name="Start">
           <Path Fill="{StaticResource SB.Accent}" Width="18" Height="18" Stretch="Uniform"
@@ -124,36 +125,53 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:AppButtonViewModel">
+              <!-- Drag to reorder: see AppDragController. The click is routed through OnAppClick so a drag never clicks. -->
+              <views:AppPresence VerticalAlignment="Center" Loaded="OnAppItemLoaded"
+                                 IsLeaving="{x:Bind IsLeaving, Mode=OneWay}">
+              <views:StackPlate Background="{StaticResource SB.ActiveItem}"
+                                CornerRadius="{Binding ItemCornerRadius, Source={StaticResource SB.Theme}}"
+                                Opacity="{x:Bind views:TaskbarBrushes.StackOpacity(HasMultipleWindows, IsHovered, IsActive), Mode=OneWay}" />
               <Button Style="{StaticResource SbItemButton}"
                       Width="{Binding ItemSize, Source={StaticResource SB.Theme}}"
                       Background="{x:Bind views:TaskbarBrushes.ItemBackground(IsActive), Mode=OneWay}"
-                      Command="{x:Bind ClickCommand}"
+                      Click="OnAppClick"
                       ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
+                      ContextRequested="OnAppContextRequested"
+                      PointerEntered="OnAppPointerEntered"
+                      PointerExited="OnAppPointerExited"
+                      PointerCanceled="OnAppPointerExited"
+                      PointerCaptureLost="OnAppPointerExited"
                       AutomationProperties.Name="{x:Bind DisplayName, Mode=OneWay}">
-                <Button.ContextFlyout>
-                  <MenuFlyout ShouldConstrainToRootBounds="False" Placement="Top">
-                    <MenuFlyoutItem Text="{x:Bind DisplayName, Mode=OneWay}" IsEnabled="False" />
-                    <MenuFlyoutItem Text="Open new window" Command="{x:Bind LaunchNewCommand}" />
-                  </MenuFlyout>
-                </Button.ContextFlyout>
                 <Grid Width="{Binding ItemSize, Source={StaticResource SB.Theme}}"
                       Height="{Binding ItemSize, Source={StaticResource SB.Theme}}">
-                  <Image Source="{x:Bind Icon, Mode=OneWay}"
-                         Visibility="{x:Bind HasIcon, Mode=OneWay}"
-                         Width="{Binding IconSize, Source={StaticResource SB.Theme}}"
-                         Height="{Binding IconSize, Source={StaticResource SB.Theme}}"
-                         Stretch="Uniform"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" />
-                  <TextBlock Text="{x:Bind Initial, Mode=OneWay}"
-                             Visibility="{x:Bind ShowInitial, Mode=OneWay}"
-                             Style="{StaticResource SbText}" FontSize="15"
-                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  <!-- Red "needs attention" plate: the app flashed its window (FlashWindowEx). -->
+                  <views:AttentionHighlight IsFlashing="{x:Bind IsFlashing, Mode=OneWay}"
+                                            Background="{StaticResource SB.Attention}"
+                                            CornerRadius="{Binding ItemCornerRadius, Source={StaticResource SB.Theme}}" />
+                  <Grid Width="{Binding IconSize, Source={StaticResource SB.Theme}}"
+                        Height="{Binding IconSize, Source={StaticResource SB.Theme}}"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Image Source="{x:Bind Icon, Mode=OneWay}"
+                           Visibility="{x:Bind HasIcon, Mode=OneWay}"
+                           Stretch="Uniform" />
+                    <TextBlock Text="{x:Bind Initial, Mode=OneWay}"
+                               Visibility="{x:Bind ShowInitial, Mode=OneWay}"
+                               Style="{StaticResource SbText}" FontSize="15"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <!-- The app's overlay icon (ITaskbarList3::SetOverlayIcon): unread count, status. -->
+                    <Image Source="{x:Bind Badge, Mode=OneWay}"
+                           Visibility="{x:Bind HasBadge, Mode=OneWay}"
+                           Width="16" Height="16" Stretch="Uniform"
+                           HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                           Margin="0,0,-5,-4" />
+                  </Grid>
                   <views:RunningIndicator IsActive="{x:Bind IsActive, Mode=OneWay}"
                                           Visibility="{x:Bind IsRunning, Mode=OneWay}"
                                           ActiveBrush="{StaticResource SB.Accent}"
                                           InactiveBrush="{StaticResource SB.Subtle}" />
                 </Grid>
               </Button>
+              </views:AppPresence>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
@@ -161,10 +179,16 @@
 
       <!-- Hosted widget -->
       <DataTemplate x:Key="WidgetTemplate" x:DataType="vm:WidgetSectionViewModel">
-        <Border Background="{StaticResource SB.WidgetBackground}"
+        <!-- Fixed-size widgets bind Width; auto-size widgets leave it NaN and are clamped by MinWidth / MaxWidth. -->
+        <!-- Drag to reorder: see WidgetDragController. -->
+        <Border Background="{x:Bind Background}"
                 CornerRadius="{Binding ItemCornerRadius, Source={StaticResource SB.Theme}}"
                 Height="{Binding ItemSize, Source={StaticResource SB.Theme}}"
                 Width="{x:Bind Width, Mode=OneWay}"
+                MinWidth="{x:Bind MinWidth}"
+                MaxWidth="{x:Bind MaxWidth}"
+                views:ZoneItem.Collapsed="{x:Bind IsCollapsed, Mode=OneWay}"
+                Loaded="OnWidgetItemLoaded"
                 VerticalAlignment="Center">
           <views:WidgetSlot Element="{x:Bind View, Mode=OneWay}" VerticalAlignment="Stretch" />
         </Border>
@@ -173,11 +197,12 @@
       <!-- System section -->
       <DataTemplate x:Key="SystemTrayTemplate" x:DataType="vm:SystemTraySectionViewModel">
         <StackPanel Orientation="Horizontal" Spacing="2">
-          <Button Style="{StaticResource SbNarrowButton}" ToolTipService.ToolTip="{x:Bind OverflowToolTip}" Opacity="0.55"
-                  AutomationProperties.Name="Notification area">
+          <!-- Shell-flyout buttons act on press: see ShellCommands for why the timing matters. -->
+          <Button Style="{StaticResource SbNarrowButton}" Command="{x:Bind ToggleOverflowCommand}" ClickMode="Press"
+                  ToolTipService.ToolTip="Show hidden icons" AutomationProperties.Name="Show hidden icons">
             <Path Style="{StaticResource SbGlyph}" Data="M1,7 L6,2 L11,7" />
           </Button>
-          <Button Style="{StaticResource SbWideButton}" Command="{x:Bind OpenQuickSettingsCommand}"
+          <Button Style="{StaticResource SbWideButton}" Command="{x:Bind ToggleQuickSettingsCommand}" ClickMode="Press"
                   ToolTipService.ToolTip="Quick settings (network, volume)" AutomationProperties.Name="Quick settings">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <!-- network -->
@@ -189,38 +214,18 @@
         </StackPanel>
       </DataTemplate>
 
-      <!-- Clock -->
-      <DataTemplate x:Key="ClockTemplate" x:DataType="vm:ClockSectionViewModel">
-        <Button Style="{StaticResource SbWideButton}" Command="{x:Bind OpenNotificationCenterCommand}"
-                ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}" AutomationProperties.Name="Clock">
-          <StackPanel VerticalAlignment="Center" Spacing="0">
-            <TextBlock Style="{StaticResource SbText}" Text="{x:Bind Time, Mode=OneWay}" HorizontalAlignment="Right" FontWeight="SemiBold" />
-            <TextBlock Style="{StaticResource SbSubtle}" Text="{x:Bind Date, Mode=OneWay}" HorizontalAlignment="Right" />
-          </StackPanel>
-        </Button>
-      </DataTemplate>
-
       <views:SectionTemplateSelector x:Key="SectionTemplateSelector"
                                      StartTemplate="{StaticResource StartTemplate}"
                                      AppsTemplate="{StaticResource AppsTemplate}"
                                      WidgetTemplate="{StaticResource WidgetTemplate}"
-                                     SystemTrayTemplate="{StaticResource SystemTrayTemplate}"
-                                     ClockTemplate="{StaticResource ClockTemplate}" />
+                                     SystemTrayTemplate="{StaticResource SystemTrayTemplate}" />
 
       <ItemsPanelTemplate x:Key="ZoneItemsPanel">
         <StackPanel Orientation="Horizontal" Spacing="{Binding ItemSpacing, Source={StaticResource SB.Theme}}" />
       </ItemsPanelTemplate>
     </Border.Resources>
 
-    <Border.ContextFlyout>
-      <MenuFlyout ShouldConstrainToRootBounds="False">
-        <MenuFlyoutItem Text="SuperBar Control Center" Command="{x:Bind ViewModel.OpenControlCenterCommand}" />
-        <MenuFlyoutItem Text="Task Manager" Command="{x:Bind ViewModel.OpenTaskManagerCommand}" />
-        <MenuFlyoutSeparator />
-        <MenuFlyoutItem Text="Exit SuperBar (restore Windows taskbar)" Command="{x:Bind ViewModel.ExitCommand}" />
-      </MenuFlyout>
-    </Border.ContextFlyout>
-
+    <Grid>
     <views:ZonePanel>
       <ItemsControl views:ZonePanel.Zone="Left" ItemsSource="{x:Bind ViewModel.LeftSections}"
                     ItemTemplateSelector="{StaticResource SectionTemplateSelector}"
@@ -235,5 +240,8 @@
                     ItemsPanel="{StaticResource ZoneItemsPanel}"
                     VerticalAlignment="Center" IsTabStop="False" />
     </views:ZonePanel>
+    <!-- Above the zones: the snap glow of a widget drag is drawn here. -->
+    <Canvas x:Name="DragOverlay" IsHitTestVisible="False" />
+    </Grid>
   </Border>
 </Window>

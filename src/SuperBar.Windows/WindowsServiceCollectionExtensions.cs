@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using SuperBar.Core.Shell;
 using SuperBar.Windows.AppBar;
+using SuperBar.Windows.Bluetooth;
+using SuperBar.Windows.Media;
 using SuperBar.Windows.Apps;
 using SuperBar.Windows.Monitors;
 using SuperBar.Windows.Shell;
@@ -22,13 +24,22 @@ public static class WindowsServiceCollectionExtensions
         services.AddSingleton<IMonitorService, MonitorService>();
         services.AddSingleton<IAppBarService, AppBarService>();
         services.AddSingleton<INativeTaskbarController, NativeTaskbarController>();
+        services.AddSingleton<TaskbarListHost>();
         services.AddSingleton<IWindowTracker, WindowTracker>();
         services.AddSingleton<IWindowSwitcher, WindowSwitcher>();
         services.AddSingleton<IAppLauncher, AppLauncher>();
         services.AddSingleton<IIconProvider, IconProvider>();
         services.AddSingleton<IShellCommands, ShellCommands>();
         services.AddSingleton<IWindowChrome, WindowChrome>();
+        services.AddSingleton<IWindowThumbnailService, WindowThumbnailService>();
+        services.AddSingleton<ICursorService, CursorService>();
         services.AddSingleton<ISystemMetricsProvider, SystemMetricsProvider>();
+
+        // Created on first use (by the Now Playing widget), on the UI thread.
+        services.AddSingleton<IMediaSessionService, GsmtcMediaSessionService>();
+
+        // Stateless; queried from the thread pool by the Bluetooth Battery widget.
+        services.AddSingleton<IBluetoothBatteryService, PnpBluetoothBatteryService>();
         return services;
     }
 

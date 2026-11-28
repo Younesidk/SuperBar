@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Media;
+using SuperBar.Core.Layout;
 using SuperBar.Core.Mvvm;
 using SuperBar.Core.Settings;
 using SuperBar.Core.Shell;
@@ -12,6 +13,10 @@ namespace SuperBar.Runtime.ViewModels;
 /// <summary>
 /// Pinned and running applications. Running windows are grouped by executable path and matched to pins
 /// by path, so a pinned app lights up when it runs. Updates are diffed to avoid re-creating buttons.
+/// <para>
+/// The user can drag buttons into any order. That order is kept for the session (running apps included) and the
+/// pinned apps' order is persisted through <see cref="PinOrderChanged"/>.
+/// </para>
 /// </summary>
 public sealed class AppsSectionViewModel : SectionViewModel
 {
@@ -22,6 +27,20 @@ public sealed class AppsSectionViewModel : SectionViewModel
     private readonly ILogger _logger;
     private IReadOnlyList<PinnedApp> _pins = [];
     private bool _active;
+    private List<string> _manualOrder = [];
+    private bool _reordering;
+    private bool _rebuildPending;
+    private DateTime _animateAfter = DateTime.MaxValue;
+    private readonly List<AppButtonViewModel> _finishedLeaving = [];
+
+    /// <summary>Raised after a drag changed the order: the keys of the pinned apps, in their new order.</summary>
+    public event Action<IReadOnlyList<string>>? PinOrderChanged;
+
+    /// <summary>"Pin to taskbar": the new pin, and its position among the pinned apps.</summary>
+    public event Action<PinnedApp, int>? PinRequested;
+
+    /// <summary>"Unpin from taskbar": the key (lower-cased path) of the pin to remove.</summary>
+    public event Action<string>? UnpinRequested;
 
     public AppsSectionViewModel(string id, IWindowTracker tracker, IWindowSwitcher switcher, IAppLauncher launcher, IconCache icons, ILogger logger) : base(id)
     {
@@ -32,7 +51,13 @@ public sealed class AppsSectionViewModel : SectionViewModel
         _logger = logger;
     }
 
+    /// <summary>Right after activation the tracker is still reporting the windows that were already open.</summary>
+    private static readonly TimeSpan StartupGrace = TimeSpan.FromSeconds(2);
+
     public ObservableCollection<AppButtonViewModel> Apps { get; } = new();
+
+    /// <summary>A button is appearing or disappearing: the row is changing width, so a drag waits.</summary>
+    public bool IsAnimating => Apps.Any(a => a.IsLeaving || a.IsAnimating);
 
     public void SetPins(IReadOnlyList<PinnedApp> pins)
     {
@@ -50,6 +75,7 @@ public sealed class AppsSectionViewModel : SectionViewModel
         _active = true;
         _tracker.WindowsChanged += OnWindowsChanged;
         Rebuild();
+        _animateAfter = DateTime.UtcNow + StartupGrace;
     }
 
     public override void Deactivate()
@@ -65,11 +91,49 @@ public sealed class AppsSectionViewModel : SectionViewModel
 
     private void OnWindowsChanged(object? sender, EventArgs e) => Rebuild();
 
+    /// <summary>A button is being dragged: structural updates wait until it is dropped.</summary>
+    public void BeginReorder() => _reordering = true;
+
+    /// <summary>Ends a drag, moving the button from <paramref name="from"/> to <paramref name="to"/> (equal to cancel).</summary>
+    public void EndReorder(int from, int to)
+    {
+        _reordering = false;
+        if (from != to && from >= 0 && to >= 0 && from < Apps.Count && to < Apps.Count)
+        {
+            Apps.Move(from, to);
+            _manualOrder = Apps.Where(a => !a.IsLeaving).Select(a => a.Key).ToList();
+            _logger.LogInformation("Moved {App} to position {Position}", Apps[to].DisplayName, to);
+            PinOrderChanged?.Invoke(Apps.Where(a => a.IsPinned && !a.IsLeaving).Select(a => a.Key).ToList());
+        }
+
+        if (_rebuildPending)
+        {
+            _rebuildPending = false;
+            Rebuild();
+        }
+    }
+
     internal static string GroupKey(TrackedWindow w) =>
         string.IsNullOrEmpty(w.ProcessPath) ? $"hwnd:{w.Handle}" : w.ProcessPath.ToLowerInvariant();
 
     private void Rebuild()
     {
+        if (_reordering)
+        {
+            _rebuildPending = true;
+            return;
+        }
+
+        foreach (var vm in _finishedLeaving)
+        {
+            if (vm.IsLeaving)
+            {
+                Apps.Remove(vm);
+            }
+        }
+
+        _finishedLeaving.Clear();
+
         var windowsByKey = new Dictionary<string, List<TrackedWindow>>();
         var runningOrder = new List<string>();
         foreach (var w in _tracker.Windows)
@@ -103,21 +167,48 @@ public sealed class AppsSectionViewModel : SectionViewModel
             }
         }
 
+        desired = AppOrdering.Arrange(desired, d => d.Key, _manualOrder);
+
+        // The buttons the bar starts with appear at once; apps opened or closed later animate.
+        var animate = DateTime.UtcNow >= _animateAfter;
         var existing = Apps.ToDictionary(a => a.Key);
         var active = _tracker.ActiveWindow;
-        for (var i = 0; i < desired.Count; i++)
+        var target = new List<AppButtonViewModel>(desired.Count);
+        foreach (var (key, pin) in desired)
         {
-            var (key, pin) = desired[i];
             windowsByKey.TryGetValue(key, out var windows);
             windows ??= [];
 
             if (!existing.TryGetValue(key, out var vm))
             {
-                vm = new AppButtonViewModel(key, this);
+                vm = new AppButtonViewModel(key, this) { AnimateIn = animate };
             }
 
-            vm.Update(pin, windows, active, ResolveIcon(pin, windows));
+            vm.IsLeaving = false; // reopened while it was animating out
+            vm.Update(pin, windows, active, ResolveIcon(pin, windows), _icons.ForPixels(ResolveBadge(windows, active)));
+            target.Add(vm);
+        }
 
+        // Closed apps keep their slot while they animate out (CompleteRemoval takes them off).
+        var kept = new HashSet<AppButtonViewModel>(target);
+        AppButtonViewModel? previous = null;
+        foreach (var vm in Apps)
+        {
+            if (!kept.Contains(vm) && animate)
+            {
+                vm.IsLeaving = true;
+                target.Insert(previous is null ? 0 : target.IndexOf(previous) + 1, vm);
+            }
+
+            if (target.Contains(vm))
+            {
+                previous = vm;
+            }
+        }
+
+        for (var i = 0; i < target.Count; i++)
+        {
+            var vm = target[i];
             var currentIndex = Apps.IndexOf(vm);
             if (currentIndex < 0)
             {
@@ -129,11 +220,36 @@ public sealed class AppsSectionViewModel : SectionViewModel
             }
         }
 
-        while (Apps.Count > desired.Count)
+        while (Apps.Count > target.Count)
         {
             Apps.RemoveAt(Apps.Count - 1);
         }
     }
+
+    internal void CompleteRemoval(AppButtonViewModel vm)
+    {
+        if (!vm.IsLeaving)
+        {
+            return;
+        }
+
+        if (_reordering)
+        {
+            _rebuildPending = true; // indexes must stay put until the drop; the next rebuild drops it
+            _finishedLeaving.Add(vm);
+            return;
+        }
+
+        Apps.Remove(vm);
+    }
+
+    /// <summary>
+    /// The badge a grouped button shows: the active window's, else the first one any of its windows set
+    /// (apps such as Discord badge only their main window).
+    /// </summary>
+    internal static IconPixels? ResolveBadge(IReadOnlyList<TrackedWindow> windows, nint activeWindow) =>
+        windows.FirstOrDefault(w => w.Handle == activeWindow && w.OverlayIcon is not null)?.OverlayIcon
+        ?? windows.FirstOrDefault(w => w.OverlayIcon is not null)?.OverlayIcon;
 
     private ImageSource? ResolveIcon(PinnedApp? pin, List<TrackedWindow> windows)
     {
@@ -185,6 +301,29 @@ public sealed class AppsSectionViewModel : SectionViewModel
         _switcher.Activate(next);
     }
 
+    internal void OnTogglePin(AppButtonViewModel app)
+    {
+        // Freeze the current order first: pinning or unpinning must not make any button jump.
+        _manualOrder = Apps.Select(a => a.Key).ToList();
+
+        if (app.IsPinned)
+        {
+            _logger.LogInformation("Unpinning {App}", app.DisplayName);
+            UnpinRequested?.Invoke(app.Key);
+            return;
+        }
+
+        if (!app.CanPin || app.LaunchPath is not { } path)
+        {
+            return;
+        }
+
+        var index = Apps.TakeWhile(a => !ReferenceEquals(a, app)).Count(a => a.IsPinned);
+        var pin = new PinnedApp { DisplayName = AppIdentity.FriendlyName(path, app.DisplayName), Path = path };
+        _logger.LogInformation("Pinning {App} ({Path}) at position {Index}", pin.DisplayName, path, index);
+        PinRequested?.Invoke(pin, index);
+    }
+
     internal void OnLaunchNew(AppButtonViewModel app)
     {
         if (app.LaunchPath is { } path)
@@ -198,13 +337,18 @@ public sealed class AppButtonViewModel : ObservableObject
 {
     private readonly AppsSectionViewModel _owner;
     private string _displayName = "";
-    private string _toolTip = "";
+    private string? _toolTip;
     private readonly RelayCommand _launchNewCommand;
+    private readonly RelayCommand _togglePinCommand;
     private ImageSource? _icon;
     private bool _isPinned;
     private bool _isRunning;
     private bool _isActive;
     private bool _hasMultipleWindows;
+    private bool _isHovered;
+    private bool _isFlashing;
+    private ImageSource? _badge;
+    private bool _isLeaving;
 
     public AppButtonViewModel(string key, AppsSectionViewModel owner)
     {
@@ -212,6 +356,7 @@ public sealed class AppButtonViewModel : ObservableObject
         _owner = owner;
         ClickCommand = new RelayCommand(() => _owner.OnClicked(this));
         _launchNewCommand = new RelayCommand(_ => _owner.OnLaunchNew(this), _ => CanLaunch);
+        _togglePinCommand = new RelayCommand(_ => _owner.OnTogglePin(this), _ => IsPinned || CanPin);
     }
 
     public string Key { get; }
@@ -221,6 +366,16 @@ public sealed class AppButtonViewModel : ObservableObject
     /// <summary>"Open new window". Disabled through CanExecute when there is nothing to launch.</summary>
     public ICommand LaunchNewCommand => _launchNewCommand;
 
+    /// <summary>"Pin to taskbar" / "Unpin from taskbar".</summary>
+    public ICommand TogglePinCommand => _togglePinCommand;
+
+    /// <summary>
+    /// A running app can be pinned when it has a launchable executable. Store (UWP) apps run inside
+    /// ApplicationFrameHost.exe, which cannot be launched to start them, so they cannot be pinned yet.
+    /// </summary>
+    public bool CanPin =>
+        !IsPinned && AppIdentity.IsPinnable(LaunchPath);
+
     public List<TrackedWindow> Windows { get; private set; } = [];
 
     public string? LaunchPath { get; private set; }
@@ -229,7 +384,8 @@ public sealed class AppButtonViewModel : ObservableObject
 
     public string DisplayName { get => _displayName; private set => SetProperty(ref _displayName, value); }
 
-    public string ToolTip { get => _toolTip; private set => SetProperty(ref _toolTip, value); }
+    /// <summary>The app name for a pinned app that is not running; running apps show window previews instead.</summary>
+    public string? ToolTip { get => _toolTip; private set => SetProperty(ref _toolTip, value); }
 
     public ImageSource? Icon
     {
@@ -259,9 +415,48 @@ public sealed class AppButtonViewModel : ObservableObject
 
     public bool HasMultipleWindows { get => _hasMultipleWindows; private set => SetProperty(ref _hasMultipleWindows, value); }
 
+    /// <summary>Set by the view while the pointer is over the button.</summary>
+    public bool IsHovered { get => _isHovered; set => SetProperty(ref _isHovered, value); }
+
     public bool CanLaunch => LaunchPath is not null;
 
-    internal void Update(PinnedApp? pin, List<TrackedWindow> windows, nint activeWindow, ImageSource? icon)
+    /// <summary>One of the app's windows asked for attention and has not been looked at yet.</summary>
+    public bool IsFlashing { get => _isFlashing; private set => SetProperty(ref _isFlashing, value); }
+
+    /// <summary>The app's overlay icon (unread count, status), drawn over the corner of its icon.</summary>
+    public ImageSource? Badge
+    {
+        get => _badge;
+        private set
+        {
+            if (SetProperty(ref _badge, value))
+            {
+                OnPropertyChanged(nameof(HasBadge));
+            }
+        }
+    }
+
+    public bool HasBadge => _badge is not null;
+
+    /// <summary>
+    /// The button is new (an app just opened): the view plays its appear animation once, then clears this.
+    /// False for the buttons the bar starts with, so a launch does not animate the whole row.
+    /// </summary>
+    public bool AnimateIn { get; set; }
+
+    /// <summary>
+    /// The app closed: the button stays in place while the view plays its disappear animation, then calls
+    /// <see cref="CompleteRemoval"/>. Cleared again if the app comes back first.
+    /// </summary>
+    public bool IsLeaving { get => _isLeaving; internal set => SetProperty(ref _isLeaving, value); }
+
+    /// <summary>Set by the view while an appear or disappear animation runs (no drag can start meanwhile).</summary>
+    public bool IsAnimating { get; set; }
+
+    /// <summary>The disappear animation finished: take the button off the bar.</summary>
+    public void CompleteRemoval() => _owner.CompleteRemoval(this);
+
+    internal void Update(PinnedApp? pin, List<TrackedWindow> windows, nint activeWindow, ImageSource? icon, ImageSource? badge = null)
     {
         Windows = windows;
         IsPinned = pin is not null;
@@ -273,10 +468,13 @@ public sealed class AppButtonViewModel : ObservableObject
         OnPropertyChanged(nameof(Initial));
         OnPropertyChanged(nameof(CanLaunch));
         _launchNewCommand.RaiseCanExecuteChanged();
+        _togglePinCommand.RaiseCanExecuteChanged();
         Icon = icon;
         IsRunning = windows.Count > 0;
         HasMultipleWindows = windows.Count > 1;
         IsActive = activeWindow != 0 && windows.Any(w => w.Handle == activeWindow);
-        ToolTip = windows.Count == 0 ? DisplayName : string.Join(Environment.NewLine, windows.Select(w => w.Title));
+        IsFlashing = windows.Any(w => w.IsFlashing);
+        Badge = badge;
+        ToolTip = windows.Count == 0 ? DisplayName : null;
     }
 }

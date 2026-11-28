@@ -32,18 +32,22 @@ internal sealed class NativeTaskbarController : INativeTaskbarController, IDispo
 
     private readonly ITaskbarRecoveryStore _recovery;
     private readonly ILogger<NativeTaskbarController> _logger;
+    private readonly TaskbarListHost _taskbarList;
     private readonly Lock _gate = new();
     private readonly WinEventProc _showHookProc;
     private readonly int _uiThreadId = Environment.CurrentManagedThreadId;
+    private readonly uint _shellHookMessage = RegisterWindowMessage("SHELLHOOK");
     private nint _showHook;
     private nint _hookedTaskbar;
 
-    public NativeTaskbarController(ITaskbarRecoveryStore recovery, ShellMessageWindow shell, ILogger<NativeTaskbarController> logger)
+    public NativeTaskbarController(ITaskbarRecoveryStore recovery, ShellMessageWindow shell, TaskbarListHost taskbarList, ILogger<NativeTaskbarController> logger)
     {
         _recovery = recovery;
+        _taskbarList = taskbarList;
         _logger = logger;
         _showHookProc = OnWindowShown;
         shell.ExplorerRestarted += OnExplorerRestarted;
+        shell.MessageReceived += OnShellMessage;
     }
 
     public NativeTaskbarState State { get; private set; } = NativeTaskbarState.Visible;
@@ -76,11 +80,14 @@ internal sealed class NativeTaskbarController : INativeTaskbarController, IDispo
                 SetState(taskbar, original | ABS_AUTOHIDE);
             }
 
-            // 3. Hide.
+            // 3. Keep it hidden. The hook goes in first so a show that races the hide below is still caught.
+            InstallShowHook(taskbar);
+
+            // 4. Hide.
             ShowWindow(taskbar, SW_HIDE);
 
-            // 4. Keep it hidden.
-            InstallShowHook(taskbar);
+            // 6. Take over the app requests meant for its buttons (badges).
+            _taskbarList.Claim();
 
             State = NativeTaskbarState.Hidden;
             _logger.LogInformation("Native taskbar hidden (original state 0x{State:X}, auto-hide changed: {Changed})", original, changeAutoHide);
@@ -98,6 +105,7 @@ internal sealed class NativeTaskbarController : INativeTaskbarController, IDispo
             }
 
             RemoveShowHook();
+            _taskbarList.Release();
             RestoreFrom(record);
             State = NativeTaskbarState.Visible;
         }
@@ -114,6 +122,7 @@ internal sealed class NativeTaskbarController : INativeTaskbarController, IDispo
             }
 
             _logger.LogWarning("Found taskbar recovery record from a previous session (pid {Pid}, {When}); restoring native taskbar", record.ProcessId, record.ChangedAtUtc);
+            _taskbarList.Release();
             RestoreFrom(record);
             State = NativeTaskbarState.Visible;
             return true;
@@ -138,9 +147,47 @@ internal sealed class NativeTaskbarController : INativeTaskbarController, IDispo
                 return;
             }
 
-            ShowWindow(taskbar, SW_HIDE);
             InstallShowHook(taskbar);
+            ShowWindow(taskbar, SW_HIDE);
+            _taskbarList.Claim();
             _logger.LogInformation("Re-hid native taskbar after Explorer restart");
+        }
+    }
+
+    /// <summary>
+    /// Safety net for the show hook: Explorer has been seen to leave its taskbar visible after a quick
+    /// exit-and-relaunch without the hook catching it, after which every Win key press revealed it. Each window
+    /// activation reported by the shell hook (opening Start is one) re-checks and hides it again. Event-driven;
+    /// the check is one IsWindowVisible call.
+    /// </summary>
+    private void OnShellMessage(uint msg, nint wParam, nint lParam)
+    {
+        if (msg != _shellHookMessage || _shellHookMessage == 0 || State != NativeTaskbarState.Hidden)
+        {
+            return;
+        }
+
+        var code = (int)wParam;
+        if (code != HSHELL_WINDOWACTIVATED && code != HSHELL_RUDEAPPACTIVATED)
+        {
+            return;
+        }
+
+        lock (_gate)
+        {
+            var taskbar = FindWindow(PrimaryTaskbarClass, null);
+            if (State != NativeTaskbarState.Hidden || taskbar == 0 || !IsWindowVisible(taskbar))
+            {
+                return;
+            }
+
+            if (taskbar != _hookedTaskbar)
+            {
+                InstallShowHook(taskbar);
+            }
+
+            ShowWindow(taskbar, SW_HIDE);
+            _logger.LogInformation("Native taskbar was visible again; hid it");
         }
     }
 

@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+
 namespace SuperBar.Core.Settings;
 
 public enum ThemeMode
@@ -19,6 +21,11 @@ public enum SectionKind
     Applications,
     Widget,
     SystemTray,
+
+    /// <summary>
+    /// Legacy (schema 1): the clock was a built-in section. It is a widget now; <see cref="SettingsNormalizer"/>
+    /// rewrites these entries. The member stays so that settings saved by older versions still load.
+    /// </summary>
     Clock,
 }
 
@@ -51,7 +58,7 @@ public sealed class BehaviorSettings
     /// <summary>Hide the native Windows taskbar while SuperBar runs (restored on exit).</summary>
     public bool HideNativeTaskbar { get; set; } = true;
 
-    /// <summary>Not implemented yet; persisted so the Control Center can show it.</summary>
+    /// <summary>Start SuperBar at sign-in. The app applies it to Windows' per-user Run key (installed builds only).</summary>
     public bool StartWithWindows { get; set; }
 
     public MonitorMode MonitorMode { get; set; } = MonitorMode.PrimaryOnly;
@@ -76,7 +83,12 @@ public sealed class WidgetInstanceSettings
     /// <summary>Requested width in DIPs; clamped to the widget type's min/max at runtime. Null = type default.</summary>
     public double? Width { get; set; }
 
-    public Dictionary<string, string> Options { get; set; } = new();
+    /// <summary>
+    /// The widget type's own settings, as JSON. Values are typed (numbers, booleans) since schema 2; rows saved by
+    /// schema 1 hold strings, which the widget settings binder converts. Owned by the widget type: the rest of
+    /// SuperBar never interprets it.
+    /// </summary>
+    public JsonObject Options { get; set; } = new();
 }
 
 public sealed class PinnedApp
@@ -93,7 +105,7 @@ public sealed class PinnedApp
 /// <summary>Root settings aggregate. Treated as an immutable snapshot once published by the settings service.</summary>
 public sealed class SuperBarSettings
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public AppearanceSettings Appearance { get; set; } = new();
