@@ -196,19 +196,42 @@
 
       <!-- System section -->
       <DataTemplate x:Key="SystemTrayTemplate" x:DataType="vm:SystemTraySectionViewModel">
-        <StackPanel Orientation="Horizontal" Spacing="2">
+        <!-- Loaded / Unloaded gate the network and battery subscriptions (see SystemTraySectionViewModel). -->
+        <StackPanel Orientation="Horizontal" Spacing="2" Loaded="OnTrayLoaded" Unloaded="OnTrayUnloaded">
           <!-- Shell-flyout buttons act on press: see ShellCommands for why the timing matters. -->
           <Button Style="{StaticResource SbNarrowButton}" Command="{x:Bind ToggleOverflowCommand}" ClickMode="Press"
                   ToolTipService.ToolTip="Show hidden icons" AutomationProperties.Name="Show hidden icons">
             <Path Style="{StaticResource SbGlyph}" Data="M1,7 L6,2 L11,7" />
           </Button>
+          <!-- Live network and battery icons (see SystemTraySectionViewModel / TrayIndicators), Segoe Fluent glyphs as in
+               Windows 11's own tray. Each icon has its own tooltip; the transparent plates make the whole slot hoverable. -->
           <Button Style="{StaticResource SbWideButton}" Command="{x:Bind ToggleQuickSettingsCommand}" ClickMode="Press"
-                  ToolTipService.ToolTip="Quick settings (network, volume)" AutomationProperties.Name="Quick settings">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <!-- network -->
-              <Path Style="{StaticResource SbGlyph}" Data="M1,6 C5,2 11,2 15,6 M3.5,8.5 C6.5,5.8 9.5,5.8 12.5,8.5 M6,11 C7.2,10 8.8,10 10,11 M8,13.2 L8,13.3" />
+                  ToolTipService.ToolTip="Quick settings" AutomationProperties.Name="Quick settings">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <!-- network: the dimmed ghost shows the empty Wi-Fi / cellular bars behind the current strength -->
+              <Grid Background="Transparent" Padding="4,0"
+                    ToolTipService.ToolTip="{x:Bind NetworkToolTip, Mode=OneWay}"
+                    AutomationProperties.Name="{x:Bind NetworkToolTip, Mode=OneWay}">
+                <FontIcon Glyph="{x:Bind NetworkGhostGlyph, Mode=OneWay}" FontSize="16"
+                          Foreground="{StaticResource SB.Foreground}" Opacity="0.3" />
+                <FontIcon Glyph="{x:Bind NetworkGlyph, Mode=OneWay}" FontSize="16"
+                          Foreground="{x:Bind NetworkBrush, Mode=OneWay}" />
+              </Grid>
               <!-- volume -->
-              <Path Style="{StaticResource SbGlyph}" Data="M1,5.5 H4 L8,2 V14 L4,10.5 H1 Z M11,5 C12.5,6.5 12.5,9.5 11,11 M13.2,3 C16,5.6 16,10.4 13.2,13" />
+              <Grid Background="Transparent" Padding="4,0" ToolTipService.ToolTip="Volume">
+                <FontIcon Glyph="&#xE995;" FontSize="16" Foreground="{StaticResource SB.Foreground}" />
+              </Grid>
+              <!-- battery: a vector icon (BatteryIcon), collapsed entirely on machines without a system battery -->
+              <Grid Background="Transparent" Padding="4,0"
+                    Visibility="{x:Bind HasBattery, Mode=OneWay}"
+                    ToolTipService.ToolTip="{x:Bind BatteryToolTip, Mode=OneWay}"
+                    AutomationProperties.Name="{x:Bind BatteryToolTip, Mode=OneWay}">
+                <views:BatteryIcon Foreground="{StaticResource SB.Foreground}"
+                                   Percentage="{x:Bind BatteryPercent, Mode=OneWay}"
+                                   IsCharging="{x:Bind BatteryIsCharging, Mode=OneWay}"
+                                   IsPluggedIn="{x:Bind BatteryIsPluggedIn, Mode=OneWay}"
+                                   IsEnergySaverOn="{x:Bind BatteryIsEnergySaverOn, Mode=OneWay}" />
+              </Grid>
             </StackPanel>
           </Button>
         </StackPanel>

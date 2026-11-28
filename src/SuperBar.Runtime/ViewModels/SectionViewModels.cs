@@ -182,11 +182,138 @@ public sealed class WidgetSectionViewModel : SectionViewModel, IDisposable
 /// <summary>
 /// System section. Real notification-area (tray icon) hosting requires SuperBar to own the shell's
 /// Shell_TrayWnd notification protocol and is NOT implemented in this milestone; until then the overflow button
-/// opens Explorer's own "hidden icons" flyout. The quick-settings button opens the real Windows Quick Settings flyout.
+/// opens Explorer's own "hidden icons" flyout. The quick-settings button opens the real Windows Quick Settings flyout
+/// and shows the live network, volume and battery icons (see <see cref="TrayIndicators"/> and <c>BatteryIcon</c>).
+/// <para>
+/// The network and battery services are followed only while the section is active (the bar is shown and not suspended
+/// by a full-screen app) AND its view is loaded: subscribing makes the services attach their Windows events and
+/// leaving makes them detach, so a hidden bar or an unloaded tray costs nothing and leaks nothing.
+/// </para>
 /// </summary>
-public sealed class SystemTraySectionViewModel(string id, IShellCommands shell) : SectionViewModel(id)
+public sealed class SystemTraySectionViewModel : SectionViewModel
 {
-    public ICommand ToggleQuickSettingsCommand { get; } = new RelayCommand(shell.ToggleQuickSettings);
+    private readonly INetworkStateService _network;
+    private readonly IBatteryStateService _battery;
+    private readonly TaskbarTheme _theme;
+    private NetworkVisual _networkVisual = TrayIndicators.For(NetworkState.Unknown);
+    private BatteryState _batteryState = BatteryState.NotPresent;
+    private bool _active;
+    private bool _viewLoaded;
+    private bool _listening;
 
-    public ICommand ToggleOverflowCommand { get; } = new RelayCommand(shell.ToggleTrayOverflow);
+    public SystemTraySectionViewModel(string id, IShellCommands shell, INetworkStateService network, IBatteryStateService battery, TaskbarTheme theme)
+        : base(id)
+    {
+        _network = network;
+        _battery = battery;
+        _theme = theme;
+        ToggleQuickSettingsCommand = new RelayCommand(shell.ToggleQuickSettings);
+        ToggleOverflowCommand = new RelayCommand(shell.ToggleTrayOverflow);
+    }
+
+    public ICommand ToggleQuickSettingsCommand { get; }
+
+    public ICommand ToggleOverflowCommand { get; }
+
+    public string NetworkGlyph => _networkVisual.Glyph;
+
+    /// <summary>The empty signal bars behind a partial Wi-Fi / cellular glyph; empty when there are none.</summary>
+    public string NetworkGhostGlyph => _networkVisual.Ghost;
+
+    public Brush NetworkBrush => _networkVisual.IsDimmed ? _theme.Subtle : _theme.Foreground;
+
+    public string NetworkToolTip => _networkVisual.ToolTip;
+
+    /// <summary>Only on machines with a system battery; desktops never show the icon.</summary>
+    public bool HasBattery => _batteryState.IsPresent;
+
+    public double BatteryPercent => _batteryState.Percent;
+
+    public bool BatteryIsCharging => _batteryState.IsCharging;
+
+    public bool BatteryIsPluggedIn => _batteryState.IsPluggedIn;
+
+    public bool BatteryIsEnergySaverOn => _batteryState.IsSaverOn;
+
+    public string BatteryToolTip { get; private set; } = "";
+
+    public override void Activate()
+    {
+        _active = true;
+        UpdateListening();
+    }
+
+    public override void Deactivate()
+    {
+        _active = false;
+        UpdateListening();
+    }
+
+    /// <summary>The tray's view entered (true) or left (false) the visual tree.</summary>
+    public void SetViewLoaded(bool loaded)
+    {
+        _viewLoaded = loaded;
+        UpdateListening();
+    }
+
+    private void UpdateListening()
+    {
+        var wanted = _active && _viewLoaded;
+        if (wanted == _listening)
+        {
+            return;
+        }
+
+        _listening = wanted;
+        if (wanted)
+        {
+            _network.Changed += OnNetworkChanged;
+            _battery.Changed += OnBatteryChanged;
+
+            // The services keep their last state, so the icons are right at once and refresh as soon as Windows answers.
+            ApplyNetwork(_network.Current);
+            ApplyBattery(_battery.Current);
+        }
+        else
+        {
+            _network.Changed -= OnNetworkChanged;
+            _battery.Changed -= OnBatteryChanged;
+        }
+    }
+
+    private void OnNetworkChanged(object? sender, NetworkState state) => ApplyNetwork(state);
+
+    private void OnBatteryChanged(object? sender, BatteryState state) => ApplyBattery(state);
+
+    private void ApplyNetwork(NetworkState state)
+    {
+        var visual = TrayIndicators.For(state);
+        if (visual == _networkVisual)
+        {
+            return;
+        }
+
+        _networkVisual = visual;
+        OnPropertyChanged(nameof(NetworkGlyph));
+        OnPropertyChanged(nameof(NetworkGhostGlyph));
+        OnPropertyChanged(nameof(NetworkBrush));
+        OnPropertyChanged(nameof(NetworkToolTip));
+    }
+
+    private void ApplyBattery(BatteryState state)
+    {
+        if (state == _batteryState && BatteryToolTip.Length > 0)
+        {
+            return;
+        }
+
+        _batteryState = state;
+        BatteryToolTip = state.IsPresent ? TrayIndicators.BatteryToolTip(state) : "";
+        OnPropertyChanged(nameof(HasBattery));
+        OnPropertyChanged(nameof(BatteryPercent));
+        OnPropertyChanged(nameof(BatteryIsCharging));
+        OnPropertyChanged(nameof(BatteryIsPluggedIn));
+        OnPropertyChanged(nameof(BatteryIsEnergySaverOn));
+        OnPropertyChanged(nameof(BatteryToolTip));
+    }
 }

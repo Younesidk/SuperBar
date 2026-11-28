@@ -6,6 +6,7 @@ using SuperBar.Windows.Media;
 using SuperBar.Windows.Apps;
 using SuperBar.Windows.Monitors;
 using SuperBar.Windows.Shell;
+using SuperBar.Windows.SystemStatus;
 using SuperBar.Windows.Taskbar;
 using SuperBar.Windows.Windows;
 
@@ -43,6 +44,10 @@ public static class WindowsServiceCollectionExtensions
 
         // Stateless; queried from the thread pool by the Bluetooth Battery widget.
         services.AddSingleton<IBluetoothBatteryService, PnpBluetoothBatteryService>();
+
+        // The tray's status icons. Subscribed to on the UI thread; they follow Windows only while subscribed.
+        services.AddSingleton<INetworkStateService, WinRtNetworkStateService>();
+        services.AddSingleton<IBatteryStateService, WinRtBatteryStateService>();
         return services;
     }
 
