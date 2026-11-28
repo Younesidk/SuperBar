@@ -30,7 +30,11 @@ public interface IMonitorService
 }
 
 /// <summary>Options used to reserve a strip of a monitor for the SuperBar window.</summary>
-public sealed record AppBarOptions(ScreenEdge Edge, double ThicknessDip, nint MonitorHandle);
+/// <param name="OwnsEdge">
+/// The bar replaces the (hidden) native taskbar, so it always sits flush on the monitor edge instead of wherever
+/// the shell's ABM_QUERYPOS answer would put it.
+/// </param>
+public sealed record AppBarOptions(ScreenEdge Edge, double ThicknessDip, nint MonitorHandle, bool OwnsEdge = false);
 
 /// <summary>
 /// Registers windows as shell AppBars (SHAppBarMessage ABM_NEW / ABM_QUERYPOS / ABM_SETPOS / ABM_REMOVE),

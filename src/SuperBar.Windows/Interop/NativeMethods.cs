@@ -254,6 +254,10 @@ internal static class NativeMethods
 
     public const int SPI_SETWORKAREA = 0x002F;
 
+    public const uint WM_POWERBROADCAST = 0x0218;
+    public const int PBT_APMRESUMESUSPEND = 0x0007;
+    public const int PBT_APMRESUMEAUTOMATIC = 0x0012;
+
     // --- Shell hook codes -------------------------------------------------------------------
     public const int HSHELL_WINDOWCREATED = 1;
     public const int HSHELL_WINDOWDESTROYED = 2;
